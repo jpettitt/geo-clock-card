@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>geo-clock-card — preview</title>
+  <style>
+    body {
+      margin: 0;
+      background: #1c1c1e;
+      color: #ddd;
+      font-family: system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      padding: 2rem;
+      box-sizing: border-box;
+    }
+    h1 { font-weight: 400; margin: 0; }
+    .stage {
+      width: min(1200px, 100%);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .controls {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    label { font-size: 0.9rem; opacity: 0.8; }
+    input[type="range"] { width: 200px; }
+  </style>
+</head>
+<body>
+  <h1>geo-clock-card — local preview</h1>
+  <div class="controls">
+    <label>twilight band:
+      <input id="twilight" type="range" min="1" max="18" value="8" step="1">
+      <span id="twilightVal">8°</span>
+    </label>
+    <label>tick (s):
+      <input id="tick" type="range" min="1" max="60" value="1" step="1">
+      <span id="tickVal">1s</span>
+    </label>
+    <label>night contrast:
+      <input id="contrast" type="range" min="0.5" max="3" value="0.85" step="0.05">
+      <span id="contrastVal">0.85</span>
+    </label>
+    <label>twilight color:
+      <input id="twilightColor" type="color" value="#463701">
+    </label>
+    <label>twilight opacity:
+      <input id="twilightOpacity" type="range" min="0" max="1" value="0.26" step="0.02">
+      <span id="twilightOpacityVal">0.26</span>
+    </label>
+    <label><input id="utc" type="checkbox" checked> show UTC</label>
+    <label><input id="band" type="checkbox" checked> show hour band</label>
+    <label><input id="boundaries" type="checkbox" checked> show TZ boundaries</label>
+    <label>center:
+      <select id="center">
+        <option value="antimeridian" selected>antimeridian (Pacific)</option>
+        <option value="home">home (California −119°)</option>
+        <option value="sun">sun (subsolar)</option>
+      </select>
+    </label>
+  </div>
+  <div class="controls">
+    <label><input id="live" type="checkbox" checked> live clock</label>
+    <label>moment (UTC):
+      <input id="datetime" type="datetime-local" step="60" disabled>
+    </label>
+    <button id="preset-vernal" type="button">vernal equinox</button>
+    <button id="preset-summer" type="button">June solstice</button>
+    <button id="preset-autumn" type="button">autumnal equinox</button>
+    <button id="preset-winter" type="button">December solstice</button>
+  </div>
+  <div class="stage" id="stage"></div>
+
+  <script type="module">
+    import '../dist/geo-clock-card.js';
+
+    const stage = document.getElementById('stage');
+    const twilight = document.getElementById('twilight');
+    const twilightVal = document.getElementById('twilightVal');
+    const tick = document.getElementById('tick');
+    const tickVal = document.getElementById('tickVal');
+    const utc = document.getElementById('utc');
+    const band = document.getElementById('band');
+    const boundaries = document.getElementById('boundaries');
+    const center = document.getElementById('center');
+    const live = document.getElementById('live');
+    const datetime = document.getElementById('datetime');
+    const contrast = document.getElementById('contrast');
+    const contrastVal = document.getElementById('contrastVal');
+    const twilightColor = document.getElementById('twilightColor');
+    const twilightOpacity = document.getElementById('twilightOpacity');
+    const twilightOpacityVal = document.getElementById('twilightOpacityVal');
+
+    // datetime-local is naive (no tz). We'll treat the value as UTC
+    // because the card's terminator math runs in UTC and that's what
+    // a tester is most likely reasoning about.
+    const isoToInputUtc = (d) => {
+      // pad and slice "YYYY-MM-DDTHH:MM" from an ISO string
+      return d.toISOString().slice(0, 16);
+    };
+    const inputUtcToIso = (v) => v ? `${v}:00Z` : null;
+
+    // Astronomical reference moments for 2024 (UTC). Not exact to the
+    // second, but close enough that the terminator visibly hits each
+    // solstice/equinox case.
+    const presets = {
+      'preset-vernal': '2024-03-20T03:06',
+      'preset-summer': '2024-06-20T20:51',
+      'preset-autumn': '2024-09-22T12:43',
+      'preset-winter': '2024-12-21T09:21',
+    };
+
+    function rebuild() {
+      stage.innerHTML = '';
+      const card = document.createElement('geo-clock-card');
+      const cfg = {
+        type: 'custom:geo-clock-card',
+        twilightDegrees: Number(twilight.value),
+        updateInterval: Number(tick.value),
+        showUTC: utc.checked,
+        showTimezoneBand: band.checked,
+        showTimezoneBoundaries: boundaries.checked,
+        nightContrast: Number(contrast.value),
+        twilightColor: twilightColor.value,
+        twilightOpacity: Number(twilightOpacity.value),
+        center: center.value,
+        homeLongitude: -119,
+        imageryBase: '../dist/',
+      };
+      if (!live.checked && datetime.value) {
+        cfg.now = inputUtcToIso(datetime.value);
+      }
+      card.setConfig(cfg);
+      stage.appendChild(card);
+      twilightVal.textContent = `${twilight.value}°`;
+      tickVal.textContent = `${tick.value}s`;
+      contrastVal.textContent = Number(contrast.value).toFixed(2);
+      twilightOpacityVal.textContent = Number(twilightOpacity.value).toFixed(2);
+      datetime.disabled = live.checked;
+    }
+
+    function freezeAt(value) {
+      live.checked = false;
+      datetime.value = value;
+      rebuild();
+    }
+
+    twilight.addEventListener('input', rebuild);
+    tick.addEventListener('input', rebuild);
+    contrast.addEventListener('input', rebuild);
+    twilightColor.addEventListener('input', rebuild);
+    twilightOpacity.addEventListener('input', rebuild);
+    utc.addEventListener('change', rebuild);
+    band.addEventListener('change', rebuild);
+    boundaries.addEventListener('change', rebuild);
+    center.addEventListener('change', rebuild);
+    live.addEventListener('change', rebuild);
+    datetime.addEventListener('input', () => {
+      if (datetime.value) live.checked = false;
+      rebuild();
+    });
+
+    for (const [id, value] of Object.entries(presets)) {
+      document.getElementById(id).addEventListener('click', () => freezeAt(value));
+    }
+
+    // Seed datetime to "now" so when the user unticks live they don't
+    // start from a blank input.
+    datetime.value = isoToInputUtc(new Date());
+    rebuild();
+  </script>
+</body>
+</html>

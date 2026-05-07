@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# NASA source imagery cache (~230 MB of PNGs) — regenerate via
+# `npm run fetch-imagery`.
+.fetch-tmp/
+
+# Resized imagery is fetched, not committed (see scripts/fetch-imagery.sh).
+# Stage 3 will revisit whether to bundle it into the repo for HACS.
+assets/*.jpg
+assets/*.png
