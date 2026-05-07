@@ -12,6 +12,7 @@ mkdir -p "$ASSETS" "$TMP"
 
 SRC_URL="https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_time_zones.geojson"
 RAW="$TMP/tz-raw.geojson"
+AGG="$TMP/tz-aggregated.geojson"
 OUT="$ASSETS/timezones.json"
 
 if [[ ! -s "$RAW" ]]; then
@@ -21,20 +22,22 @@ else
   echo "cached: $RAW"
 fi
 
-# Simplification pipeline:
-#   - simplify to 2% retention (good detail vs. ~62 KB output)
+# Aggregation step (Node): merge polygons per zone and union all the
+# `places` tokens into one deduped, country-first string. Without this
+# mapshaper's -dissolve only keeps the first feature's `places`, which
+# is often an ocean / polar strip rather than the populated regions.
+echo "aggregating places per zone..."
+node "$ROOT/scripts/aggregate-tz.mjs" "$RAW" "$AGG"
+
+# Simplification:
+#   - simplify to 2% retention (good detail vs. <100 KB output)
 #   - keep-shapes to avoid losing tiny polygons
-#   - dissolve adjacent polygons sharing the same `zone` property so
-#     internal seams between same-zone shapes vanish
-#   - convert to lines (we only want boundaries, not filled polygons)
-#   - drop all attributes; geometry is all we render
+#   - retain only the fields the card actually needs
 #   - precision=0.01 → 2 decimal places (~1 km on the equator)
 echo "simplifying with mapshaper..."
-npx --no-install mapshaper "$RAW" \
+npx --no-install mapshaper "$AGG" \
   -simplify 2% keep-shapes \
-  -dissolve fields=zone copy-fields=zone \
-  -lines \
-  -filter-fields \
+  -filter-fields zone,time_zone,name,places \
   -o "$OUT" format=geojson precision=0.01 \
   2>&1 | tail -5
 

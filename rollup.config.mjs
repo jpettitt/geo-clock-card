@@ -12,13 +12,14 @@ export default {
     sourcemap: true,
   },
   plugins: [
+    typescript({ tsconfig: './tsconfig.json' }),
     resolve(),
     commonjs(),
-    typescript({ tsconfig: './tsconfig.json' }),
     copy({
       targets: [
         { src: 'assets/*.jpg', dest: 'dist' },
         { src: 'assets/timezones.json', dest: 'dist' },
+        { src: 'assets/timezones-iana.json', dest: 'dist' },
       ],
       // Don't fail the build if assets aren't downloaded yet — the user
       // runs `npm run fetch-assets` once before first install.

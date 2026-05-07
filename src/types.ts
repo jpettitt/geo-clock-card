@@ -30,9 +30,12 @@ export interface GeoClockCardConfig {
   showTimezoneBand?: boolean;
   /** Show political time-zone boundary lines on the map. Default true. */
   showTimezoneBoundaries?: boolean;
+  /** CSS `brightness()` value applied to the day (Blue Marble) layer.
+   *  1 = unchanged, >1 = brighter, <1 = darker. Default 1.15. */
+  dayBrightness?: number;
   /** CSS `contrast()` value applied to the night (Black Marble) layer.
    *  1 = unchanged, >1 = punchier city lights, <1 = washed out.
-   *  Default 0.85. */
+   *  Default 1. */
   nightContrast?: number;
   /** Color of the warm twilight glow stroked along the terminator.
    *  Any CSS color string (hex, rgb(), color name). Default '#ff7a3d'. */
@@ -51,6 +54,7 @@ export interface ResolvedConfig {
   showUTC: boolean;
   showTimezoneBand: boolean;
   showTimezoneBoundaries: boolean;
+  dayBrightness: number;
   nightContrast: number;
   twilightColor: string;
   twilightOpacity: number;

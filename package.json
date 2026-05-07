@@ -18,7 +18,8 @@
     "test:watch": "vitest",
     "fetch-imagery": "bash scripts/fetch-imagery.sh",
     "fetch-tz": "bash scripts/fetch-tz.sh",
-    "fetch-assets": "npm run fetch-imagery && npm run fetch-tz"
+    "fetch-tz-iana": "bash scripts/fetch-tz-iana.sh",
+    "fetch-assets": "npm run fetch-imagery && npm run fetch-tz && npm run fetch-tz-iana"
   },
   "keywords": [
     "home-assistant",
