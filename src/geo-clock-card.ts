@@ -5,6 +5,7 @@ import { terminatorCurve, terminatorPolygon } from './terminator.js';
 import { polygonToSvgPoints } from './projection.js';
 import { timezoneBand, BAND_H } from './timezone-band.js';
 import { loadTimezones, timezonesToPathD } from './timezones.js';
+import { dayImageForDate } from './day-image.js';
 import type { GeoClockCardConfig, ResolvedConfig } from './types.js';
 
 // Equirectangular working canvas. The SVG scales to fit, so this is
@@ -15,15 +16,6 @@ const MAP_H = 1024;
 const NIGHT_IMAGE = 'black-marble-2048.jpg';
 const TZ_DATA = 'timezones.json';
 
-/** Returns the day-image filename for a given UTC date. The bundle
- *  ships 12 monthly Blue Marble composites (mid-month frames from
- *  NASA SVS dataset 3523); this just snaps to the current month. A
- *  smoother rendering could blend two frames by day-of-month, but
- *  the visible difference is small. */
-function dayImageForDate(d: Date): string {
-  const month = d.getUTCMonth() + 1; // 1..12
-  return `blue-marble-${String(month).padStart(2, '0')}-2048.jpg`;
-}
 
 // Fallback when 'home' mode is requested but hass.config.longitude is
 // unavailable — used during the dev preview and as a safe default for

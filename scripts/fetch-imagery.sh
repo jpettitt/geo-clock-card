@@ -22,21 +22,33 @@ ASSETS="$ROOT/assets"
 TMP="$ROOT/.fetch-tmp"
 mkdir -p "$ASSETS" "$TMP"
 
-# Frame index for the 15th of each month, leap-year cycle (0-indexed).
-# index = (day_of_year_for_15th - 1).
+# Frame indices into the SVS 366-frame leap-year cycle (0-indexed).
+# Two frames per month: day 1 (start) and day 15 (mid).
 declare -a DAY_FRAMES=(
-  "01:0014"  # Jan 15
-  "02:0045"  # Feb 15
-  "03:0074"  # Mar 15
-  "04:0105"  # Apr 15
-  "05:0135"  # May 15
-  "06:0166"  # Jun 15
-  "07:0196"  # Jul 15
-  "08:0227"  # Aug 15
-  "09:0258"  # Sep 15
-  "10:0288"  # Oct 15
-  "11:0319"  # Nov 15
-  "12:0349"  # Dec 15
+  "01-start:0000"  # Jan  1
+  "01-mid:0014"    # Jan 15
+  "02-start:0031"  # Feb  1
+  "02-mid:0045"    # Feb 15
+  "03-start:0060"  # Mar  1
+  "03-mid:0074"    # Mar 15
+  "04-start:0091"  # Apr  1
+  "04-mid:0105"    # Apr 15
+  "05-start:0121"  # May  1
+  "05-mid:0135"    # May 15
+  "06-start:0152"  # Jun  1
+  "06-mid:0166"    # Jun 15
+  "07-start:0182"  # Jul  1
+  "07-mid:0196"    # Jul 15
+  "08-start:0213"  # Aug  1
+  "08-mid:0227"    # Aug 15
+  "09-start:0244"  # Sep  1
+  "09-mid:0258"    # Sep 15
+  "10-start:0274"  # Oct  1
+  "10-mid:0288"    # Oct 15
+  "11-start:0305"  # Nov  1
+  "11-mid:0319"    # Nov 15
+  "12-start:0335"  # Dec  1
+  "12-mid:0349"    # Dec 15
 )
 
 DAY_FRAME_BASE="https://svs.gsfc.nasa.gov/vis/a000000/a003500/a003523/frames/4000x2000_2x1_10p"
@@ -61,13 +73,13 @@ resize_to_2048() {
        "$in" --out "$out" >/dev/null
 }
 
-echo "Blue Marble — 12 monthly daylight frames"
+echo "Blue Marble — 24 daylight frames (start + mid of each month)"
 for entry in "${DAY_FRAMES[@]}"; do
-  month="${entry%:*}"
-  frame="${entry#*:}"
+  tag="${entry%:*}"   # e.g. "01-mid"
+  frame="${entry#*:}" # e.g. "0014"
   src_url="${DAY_FRAME_BASE}/SOS_BMarble_BG_09.${frame}.png"
-  src="$TMP/blue-${month}.png"
-  out="$ASSETS/blue-marble-${month}-2048.jpg"
+  src="$TMP/blue-${tag}.png"
+  out="$ASSETS/blue-marble-${tag}-2048.jpg"
   download "$src_url" "$src"
   if [[ "$out" -ot "$src" || ! -s "$out" ]]; then
     resize_to_2048 "$src" "$out"
