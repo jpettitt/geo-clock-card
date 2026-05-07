@@ -7,7 +7,5 @@ dist/
 # `npm run fetch-imagery`.
 .fetch-tmp/
 
-# Resized imagery is fetched, not committed (see scripts/fetch-imagery.sh).
-# Stage 3 will revisit whether to bundle it into the repo for HACS.
-assets/*.jpg
-assets/*.png
+# Resized imagery (assets/blue-marble-*-2048.jpg, black-marble-*) IS
+# tracked so a fresh clone has a runnable build without re-fetching.
