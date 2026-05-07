@@ -263,7 +263,7 @@ export class GeoClockCard extends LitElement {
       showTimezoneBoundaries: config.showTimezoneBoundaries ?? true,
       dayBrightness: clamp(config.dayBrightness ?? 1.15, 0, 5),
       nightContrast: clamp(config.nightContrast ?? 1, 0, 5),
-      twilightColor: config.twilightColor ?? '#463701',
+      twilightColor: sanitizeCssColor(config.twilightColor) ?? '#463701',
       twilightOpacity: clamp(config.twilightOpacity ?? 0.26, 0, 1),
       imageryBase: base.endsWith('/') ? base : base + '/',
       center: config.center ?? 'antimeridian',
@@ -684,6 +684,30 @@ function parseFrozenNow(input: string | number | Date | undefined): Date | undef
   if (input == null) return undefined;
   const d = input instanceof Date ? input : new Date(input);
   return Number.isFinite(d.getTime()) ? d : undefined;
+}
+
+/**
+ * Restrict twilightColor to a small, well-known set of CSS color
+ * forms. We splice this value into a `style` attribute, and Lit's
+ * attribute-escaping already prevents breaking out of the attribute
+ * — but a value like `red; background: url(http://attacker.tld/x)`
+ * would still inject a rule that pings the URL. Locking the input
+ * to hex / rgb[a] / hsl[a] / named-color forms closes that vector.
+ * Returns undefined for anything unrecognized so the caller can
+ * fall back to its default.
+ */
+function sanitizeCssColor(input: string | undefined): string | undefined {
+  if (typeof input !== 'string') return undefined;
+  const v = input.trim();
+  // #abc, #abcd, #aabbcc, #aabbccdd
+  if (/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v)) return v;
+  // rgb(...) / rgba(...) / hsl(...) / hsla(...) — digits, dots, commas,
+  // percent, whitespace, slashes (CSS-color-4 syntax). No semicolons,
+  // braces, or url().
+  if (/^(?:rgb|rgba|hsl|hsla)\([\d.,%\s/]+\)$/i.test(v)) return v;
+  // Plain alphabetic CSS color names (red, transparent, currentcolor…)
+  if (/^[a-z]+$/i.test(v)) return v;
+  return undefined;
 }
 
 function formatLocalTime(d: Date): string {
