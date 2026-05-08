@@ -1,5 +1,12 @@
 # geo-clock-card
 
+[![GitHub Release](https://img.shields.io/github/release/jpettitt/geo-clock-card.svg?style=for-the-badge)](https://github.com/jpettitt/geo-clock-card/releases)
+[![License](https://img.shields.io/github/license/jpettitt/geo-clock-card.svg?style=for-the-badge)](LICENSE)
+[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://hacs.xyz)
+[![Maintenance](https://img.shields.io/maintenance/yes/2026?style=for-the-badge)](https://github.com/jpettitt/geo-clock-card)
+
+[![Add Repository](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=jpettitt&repository=geo-clock-card&category=plugin)
+
 A Home Assistant Lovelace card that turns one of your dashboards into a live
 world clock, modeled on the Geochron® style (no affiliation). NASA Blue Marble
 (day) and Black Marble (night) imagery, a real day/night terminator computed
@@ -53,8 +60,11 @@ the planet.
 
 ### HACS (recommended)
 
-1. HACS → ⋮ → **Custom repositories** → add `https://github.com/jpettitt/geo-clock-card`,
-   category **Lovelace**.
+[![Add Repository](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=jpettitt&repository=geo-clock-card&category=plugin)
+
+1. Click the badge above (it deep-links to your HA instance) — or
+   manually go HACS → ⋮ → **Custom repositories** → add
+   `https://github.com/jpettitt/geo-clock-card`, category **Lovelace**.
 2. Install **Geo Clock Card** from HACS.
 3. Refresh the browser. HACS adds the resource for you; otherwise:
    Settings → Dashboards → ⋮ → **Resources** → add
