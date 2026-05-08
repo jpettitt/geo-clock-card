@@ -145,12 +145,29 @@ for (const f of data.features) {
   }
 }
 
+// Build clean rectangular zone bands instead of using the source's
+// country-shaped polygons. Three reasons:
+//   1. The Natural Earth source represents each zone as one big
+//      polygon that includes both the continental landmass AND its
+//      Antarctic strip, joined by an ocean corridor. Simplifying
+//      that for the visible overlay produces ugly diagonal
+//      "triangular" artifacts at the poles.
+//   2. The visible offset overlay's job is to mark the 15°
+//      meridian zones — country shapes belong on the IANA layer.
+//   3. Rectangles are trivially valid polygons; no simplification
+//      noise, no seam edge cases beyond the standard wrap.
+//
+// Fractional zones (5:30, 5:45, etc.) are dropped from the
+// rectangle set — their accurate info comes via the IANA layer.
+// We still aggregate their `places` into the parent whole-hour
+// band so the offset hover fallback still mentions them.
 const features = [];
 for (const g of groups.values()) {
-  // Three-key sort:
-  //   1. generic last (Ocean / Antarctica / Stations)
-  //   2. higher population first
-  //   3. preserve original insertion order as final tiebreaker
+  // Skip fractional zones for visible boundaries.
+  if (!Number.isInteger(g.zone)) continue;
+  if (g.zone < -12 || g.zone > 12) continue;
+
+  // Sort places: country-priority first, generics last.
   const ranked = g.tokenOrder
     .map((t, i) => ({
       t,
@@ -166,6 +183,8 @@ for (const g of groups.values()) {
     .map((x) => x.t);
 
   const name = ZONE_NAMES[String(g.zone)] ?? null;
+  const lonWest = g.zone * 15 - 7.5;
+  const lonEast = g.zone * 15 + 7.5;
 
   features.push({
     type: 'Feature',
@@ -175,7 +194,16 @@ for (const g of groups.values()) {
       name,
       places: ranked.join(', '),
     },
-    geometry: { type: 'MultiPolygon', coordinates: g.polygons },
+    geometry: {
+      type: 'Polygon',
+      coordinates: [[
+        [lonWest, 90],
+        [lonEast, 90],
+        [lonEast, -90],
+        [lonWest, -90],
+        [lonWest, 90],
+      ]],
+    },
   });
 }
 

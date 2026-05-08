@@ -22,24 +22,15 @@ else
   echo "cached: $RAW"
 fi
 
-# Aggregation step (Node): merge polygons per zone and union all the
-# `places` tokens into one deduped, country-first string. Without this
-# mapshaper's -dissolve only keeps the first feature's `places`, which
-# is often an ocean / polar strip rather than the populated regions.
-echo "aggregating places per zone..."
-node "$ROOT/scripts/aggregate-tz.mjs" "$RAW" "$AGG"
-
-# Simplification:
-#   - simplify to 2% retention (good detail vs. <100 KB output)
-#   - keep-shapes to avoid losing tiny polygons
-#   - retain only the fields the card actually needs
-#   - precision=0.01 → 2 decimal places (~1 km on the equator)
-echo "simplifying with mapshaper..."
-npx --no-install mapshaper "$AGG" \
-  -simplify 2% keep-shapes \
-  -filter-fields zone,time_zone,name,places \
-  -o "$OUT" format=geojson precision=0.01 \
-  2>&1 | tail -5
+# Aggregate the 120 source features into 25 whole-hour zones,
+# replacing each one's polygon with a clean 15° × 180° rectangle.
+# The country-shaped source polygons produced ugly triangular
+# artifacts at the poles after simplification — the visible overlay's
+# job is to mark the meridian zones, and the IANA layer handles
+# country detail on hover. Rectangles are valid out of the box, no
+# mapshaper simplification needed.
+echo "aggregating into rectangle bands..."
+node "$ROOT/scripts/aggregate-tz.mjs" "$RAW" "$OUT"
 
 echo
 echo "Done. Output:"
