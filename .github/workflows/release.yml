@@ -42,8 +42,13 @@ jobs:
         # output is deterministic across CI runs; -9 maxes compression.
         run: gzip -kn9 dist/geo-clock-card.js
 
-      - name: Show artifact sizes
-        run: ls -lh dist/geo-clock-card.js dist/geo-clock-card.js.gz
+      - name: Drop source maps from the release bundle
+        # Sourcemaps are useful at dev time but leak source structure
+        # and double the ship size; they're not part of the release.
+        run: rm -f dist/*.map
+
+      - name: Show artifact inventory
+        run: ls -lh dist/
 
       - name: Create or update release
         env:
@@ -51,12 +56,23 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
-          ASSETS=(
-            dist/geo-clock-card.js
-            dist/geo-clock-card.js.gz
-            dist/timezones.json
-            dist/timezones-iana.json
-          )
+          # All shippable artifacts: JS bundle (+ pre-gzipped),
+          # GeoJSON overlays, and every monthly Blue/Black Marble
+          # image. HACS copies whatever sits next to the named JS
+          # file, so the imagery has to land here too — otherwise
+          # the card renders with broken <image> elements after
+          # install.
+          mapfile -t ASSETS < <(find dist -type f -print | sort)
+          echo "Uploading ${#ASSETS[@]} assets:"
+          printf '  %s\n' "${ASSETS[@]}"
+          # SemVer pre-release tags contain a hyphen after the version
+          # (e.g. v0.1.1-alpha, v0.2.0-rc.1). Mark those as
+          # prereleases on GitHub so HACS doesn't auto-promote them.
+          PRE_FLAG=""
+          if [[ "$TAG" == *-* ]]; then
+            PRE_FLAG="--prerelease"
+            echo "Tag $TAG looks like a pre-release"
+          fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists — attaching/updating assets"
             gh release upload "$TAG" "${ASSETS[@]}" --clobber
@@ -65,5 +81,6 @@ jobs:
             gh release create "$TAG" \
               --title "$TAG" \
               --generate-notes \
+              $PRE_FLAG \
               "${ASSETS[@]}"
           fi
