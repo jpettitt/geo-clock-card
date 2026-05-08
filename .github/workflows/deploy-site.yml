@@ -1,0 +1,39 @@
+name: Deploy to R2
+
+# Pushes the geoclock.world site (everything in docs/web/) to the R2
+# bucket that fronts the domain. Runs on every push to main, so any
+# edit to index.html, preview.png, or future logo.svg goes live within
+# a minute of the merge.
+#
+# Versioned card assets (geo-clock-card.js + imagery, under /v<X.Y.Z>/)
+# are NOT touched by this workflow — see release.yml for the per-tag
+# asset deployment.
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS CLI for R2
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+        run: |
+          aws configure set aws_access_key_id $R2_ACCESS_KEY_ID
+          aws configure set aws_secret_access_key $R2_SECRET_ACCESS_KEY
+          aws configure set region auto
+
+      - name: Sync to R2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+        run: |
+          aws s3 sync ./docs/web s3://geoclock-world \
+            --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com \
+            --delete \
+            --exclude 'v*/*'

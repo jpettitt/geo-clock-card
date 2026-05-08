@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>geoclock.world — live world day/night map</title>
+  <meta name="description" content="A live Home Assistant Lovelace card that turns a dashboard into a Geochron-style world clock. NASA Blue Marble + Black Marble imagery, real day/night terminator, DST-aware time-zone overlay.">
+
+  <!-- OpenGraph / Twitter — geoclock.world is the canonical URL the
+       preview card and search engines should associate with this page. -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://geoclock.world/">
+  <meta property="og:title" content="geoclock.world — live world day/night map">
+  <meta property="og:description" content="A Home Assistant Lovelace card with a live world day/night terminator, DST-aware time zones, and NASA Blue/Black Marble imagery.">
+  <meta property="og:image" content="https://geoclock.world/preview.png">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <link rel="canonical" href="https://geoclock.world/">
+
+  <style>
+    /* Dark, minimal, map-first. The card is meant to be the hero — the
+       chrome around it is intentionally quiet. Layout: vertical stack
+       on every screen size; the SVG card scales to fill the stage's
+       width and keeps its 2048×1068-ish aspect ratio. */
+    :root {
+      --bg: #0c1118;
+      --fg: #e6e9ef;
+      --muted: #9aa3b0;
+      --accent: #ff7a3d;
+      --link: #6ab0ff;
+      --max-width: 1240px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                   'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    a { color: var(--link); }
+    a:hover { text-decoration: underline; }
+
+    header {
+      padding: 1rem 1.5rem;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .wordmark { text-align: center; }
+    .wordmark h1 {
+      font-size: 1.4rem;
+      font-weight: 600;
+      margin: 0;
+      letter-spacing: 0.005em;
+    }
+    .wordmark h1 .tld { color: var(--accent); }
+    .wordmark .tagline {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin: 0;
+    }
+
+    /* Map is full-bleed: spans the entire viewport width so the
+       imagery has the most pixel area to work with. The header, copy,
+       and footer stay padded but unconstrained.
+       Aspect ratio MUST match the rendered card exactly: viewBox is
+       2048 × (1024 + 44 hour band) = 2048 × 1068. Anything wider and
+       the card overflows .stage's box and the bottom (date readout
+       + a strip of map) gets clipped by the overflow:hidden. */
+    .stage {
+      position: relative;
+      width: 100%;
+      background: #000;
+      overflow: hidden;
+      aspect-ratio: 2048 / 1068;
+    }
+    geo-clock-card { display: block; }
+
+    /* Fullscreen toggle — sits inside .stage so it's visible in both
+       windowed and fullscreen modes (children of a fullscreen-
+       promoted element keep rendering; siblings outside it don't). */
+    .fs-btn {
+      position: absolute;
+      top: 0.75rem;
+      right: 0.75rem;
+      z-index: 5;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(8, 14, 28, 0.55);
+      color: var(--fg);
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+    .fs-btn:hover {
+      background: rgba(8, 14, 28, 0.85);
+      border-color: rgba(255, 255, 255, 0.32);
+    }
+    .fs-btn:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    .fs-btn svg { width: 18px; height: 18px; }
+    /* Hide the "exit" glyph by default, swap when fullscreen. */
+    .fs-btn .icon-exit { display: none; }
+    .stage:fullscreen .fs-btn .icon-enter,
+    .stage:-webkit-full-screen .fs-btn .icon-enter { display: none; }
+    .stage:fullscreen .fs-btn .icon-exit,
+    .stage:-webkit-full-screen .fs-btn .icon-exit { display: block; }
+
+    /* In fullscreen, .stage is sized by the browser to 100vw × 100vh.
+       Drop the aspect-ratio so it doesn't fight the browser sizing,
+       and flex-center the card. The card keeps its own internal
+       aspect-ratio so it letterboxes inside the screen as needed —
+       on a 16:9 monitor that means a thin black bar above + below
+       the 1.917:1 map; on ultrawide the SVG's
+       preserveAspectRatio="xMidYMid slice" crops the sides. */
+    .stage:fullscreen,
+    .stage:-webkit-full-screen {
+      aspect-ratio: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .stage:fullscreen geo-clock-card,
+    .stage:-webkit-full-screen geo-clock-card {
+      width: 100%;
+    }
+
+    main {
+      flex: 1;
+      width: 100%;
+      padding: 1rem 1.5rem 2rem;
+    }
+    .copy {
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.45;
+      text-align: center;
+    }
+    .copy p {
+      margin: 0;
+    }
+
+    footer {
+      padding: 1rem 1.5rem 2rem;
+      max-width: var(--max-width);
+      margin: 0 auto;
+      width: 100%;
+      color: var(--muted);
+      font-size: 0.82rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem 1.25rem;
+      align-items: center;
+    }
+    footer a { color: var(--link); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* Failure mode: if the bundle 404s (R2 misconfigured), show
+       something readable instead of a blank stage. The element is
+       hidden by default and made visible by the script's catch
+       handler. */
+    .stage-error {
+      display: none;
+      padding: 2rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-align: center;
+    }
+    .stage-error.is-visible { display: block; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wordmark">
+      <h1>geoclock<span class="tld">.world</span></h1>
+      <p class="tagline">live world day/night map</p>
+    </div>
+  </header>
+
+  <div class="stage" id="stage">
+    <button class="fs-btn" type="button" id="fs-btn"
+            aria-label="Toggle fullscreen">
+      <!-- Two glyphs swapped via CSS based on :fullscreen state.
+           Both are simple corner-bracket icons drawn at 18×18. -->
+      <svg class="icon-enter" viewBox="0 0 24 24" aria-hidden="true"
+           fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 9V4h5"/>
+        <path d="M20 9V4h-5"/>
+        <path d="M4 15v5h5"/>
+        <path d="M20 15v5h-5"/>
+      </svg>
+      <svg class="icon-exit" viewBox="0 0 24 24" aria-hidden="true"
+           fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 4v5H4"/>
+        <path d="M15 4v5h5"/>
+        <path d="M9 20v-5H4"/>
+        <path d="M15 20v-5h5"/>
+      </svg>
+    </button>
+    <div class="stage-error" id="stage-error">
+      Couldn't load the live card. Check the JS console for details.
+    </div>
+  </div>
+
+  <main>
+    <section class="copy">
+      <p>Hover (or tap on mobile) any region to see the local time there; the map drifts with the sun so the daylit hemisphere stays in the middle. Real day/night terminator from solar geometry, with NASA <a href="https://svs.gsfc.nasa.gov/3523">Blue Marble</a> and <a href="https://earthobservatory.nasa.gov/features/NightLights">Black Marble</a> imagery (public domain), and time-zone polygons from <a href="https://github.com/evansiroky/timezone-boundary-builder">timezone-boundary-builder</a> (ODbL).</p>
+    </section>
+  </main>
+
+  <script type="module">
+    // Asset base — single source of truth. Same-origin: HTML and
+    // every dist/ asset are served from geoclock.world via the
+    // Cloudflare CDN (R2 origin behind the scenes). Bumping the demo
+    // to a new release is a one-line change here.
+    //
+    // The card's `imageryBase` defaults to `new URL('.', import.meta.url)`
+    // — i.e. the directory containing the loaded JS bundle — so once
+    // the import resolves, every imagery + GeoJSON fetch lands on the
+    // same versioned prefix. No manual imageryBase needed.
+    const ASSET_BASE = '/v0.2.0';
+
+    const stage = document.getElementById('stage');
+
+    try {
+      await import(`${ASSET_BASE}/geo-clock-card.js`);
+      const card = document.createElement('geo-clock-card');
+      // Defaults across the board. mainTimeSource defaults to 'home',
+      // which falls through to the visitor's device timezone when
+      // hass is not available — so each visitor sees their own clock
+      // without us having to plumb a stub hass object.
+      card.setConfig({ type: 'custom:geo-clock-card' });
+      // The fs-btn + error div are siblings inside .stage; appendChild
+      // puts the card after them, which is fine — both are positioned
+      // (button: absolute, error: hidden) so layout order doesn't
+      // affect visuals.
+      stage.appendChild(card);
+    } catch (err) {
+      console.error('geoclock.world: failed to load card bundle', err);
+      document.getElementById('stage-error').classList.add('is-visible');
+    }
+
+    // Fullscreen toggle. We target .stage (not document.documentElement)
+    // so only the map fills the screen, not the page chrome — that's
+    // the kiosk / wall-display use case. The :fullscreen CSS rules
+    // above swap aspect-ratio + center the card.
+    document.getElementById('fs-btn').addEventListener('click', () => {
+      const isFs =
+        document.fullscreenElement ||
+        // @ts-ignore — Safari prefix
+        document.webkitFullscreenElement;
+      if (isFs) {
+        (document.exitFullscreen ||
+         // @ts-ignore — Safari prefix
+         document.webkitExitFullscreen).call(document);
+      } else {
+        (stage.requestFullscreen ||
+         // @ts-ignore — Safari prefix
+         stage.webkitRequestFullscreen).call(stage);
+      }
+    });
+  </script>
+</body>
+</html>

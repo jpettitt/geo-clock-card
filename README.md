@@ -13,7 +13,9 @@ world clock, modeled on the Geochron® style (no affiliation). NASA Blue Marble
 from solar geometry, and DST-aware hover popups for every IANA time zone on
 the planet.
 
-![preview](docs/preview.png)
+🌍 **Live demo:** <https://geoclock.world>
+
+![preview](docs/web/preview.png)
 
 ## What it does
 
