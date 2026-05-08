@@ -6,35 +6,48 @@ world clock, modeled on the Geochron® style (no affiliation). NASA Blue Marble
 from solar geometry, and DST-aware hover popups for every IANA time zone on
 the planet.
 
-![preview](docs/preview.png) <!-- replace once screenshots are captured -->
+![preview](docs/preview.png)
 
 ## What it does
 
 - **World map** — NASA Blue Marble + Black Marble imagery, with the live
-  day/night boundary recomputed from the subsolar point. Twelve monthly day
+  day/night boundary recomputed from the subsolar point. 24 daylight
   composites (start + mid of each month, sampled from NASA SVS daily frames)
-  swap automatically through the year so vegetation and snow cover follow the
-  seasons.
+  swap automatically through the year so vegetation and snow cover follow
+  the seasons.
 - **Twilight glow** — warm sunrise/sunset rim along the terminator, screen-
   blended over the day side.
 - **Hour band** — 25 column meridians at every 15° of longitude, with the
   current local hour highlighted at noon and midnight.
 - **Time-zone overlay**:
   - 25 visible 15° offset bands across the globe.
-  - 419 invisible IANA polygons on top for hit-testing — hover any country
-    and a popup shows DST-aware live time, the long zone name (EDT vs EST
-    auto-switches), the offset, and the IANA tzid. Open ocean falls through
-    to the offset band's popup.
-- **Centering modes** — `antimeridian` (default, dateline at center),
-  `home` (your HA-configured longitude), or `sun` (subsolar point — the
-  daylit hemisphere stays in the middle and the map slowly drifts).
+  - 419 IANA polygons sitting invisibly on top — hover (or tap on
+    mobile) and a popup shows DST-aware live time, the long zone name
+    (EDT vs EST auto-switches), the current offset, the IANA tzid, the
+    local date (handy when the remote zone has rolled to a different
+    day), and the hovered region outlines itself for visual feedback.
+  - Time and date follow the **browser's locale** (24-hour vs AM/PM,
+    weekday/month language).
+  - Open ocean / Antarctic strips with no IANA polygon fall through to
+    the offset band's popup.
+- **Centering modes** — `sun` (default, subsolar point — the daylit
+  hemisphere stays in the middle and the map slowly drifts),
+  `home` (your HA-configured longitude), `longitude` (any numeric
+  value), or `entity` (follow a zone / person / device-tracker entity).
+- **Home marker** — optional dot at your HA-configured location that
+  tracks the map's drift.
 - **Time scrubbing** — freeze the clock at any UTC moment via `now: …`
   for screenshots or to preview the look at, say, the December solstice.
+- **Visual editor** — opens automatically when adding the card; advanced
+  visual knobs collapse into an expansion panel so the form stays clean.
 - **Tunable** — twilight band size, glow color/opacity, day brightness,
-  night contrast, all via card config or CSS variables.
+  night contrast, time-zone line color, all via card config or CSS
+  variables.
 - **Cheap** — clock readout ticks every second; the map only recomputes
   when the subsolar point would have moved ≥ 0.5 px on a 4K display
-  (≈ every 10.5 s).
+  (≈ every 10.5 s). When the card is off-screen or the browser tab is
+  backgrounded the timer drops to a 30-minute cadence; refreshes
+  immediately when the card becomes visible again.
 
 ## Install
 
@@ -94,21 +107,24 @@ centerLongitude: -119       # required when center: longitude. -180..180.
 centerEntity: zone.home     # required when center: entity. Must expose a longitude attribute.
 showHomeMarker: false       # render a dot at hass.config.latitude/longitude
 
-# Imagery + atmosphere
+# Imagery + atmosphere (under "Advanced visual settings" in the editor)
 dayBrightness: 1.15         # CSS brightness() on the day layer (0.5..2.0)
 nightContrast: 1.0          # CSS contrast() on the night layer (0.5..3.0)
 twilightDegrees: 8          # half-band of the day/night fade, sun-elevation degrees (1..18)
 twilightColor: "#463701"    # hex / rgb / rgba / hsl / named color
 twilightOpacity: 0.26       # 0..1
+timezoneLineColor: "rgba(255, 255, 255, 0.18)"  # any CSS color string
 
 # Time
 updateInterval: 1           # seconds between clock-readout ticks (1..600).
-                            # The map repaints on a separate auto-throttled timer.
+                            # The map repaints on a separate auto-throttled timer;
+                            # both drop to 30 minutes when the card is off-screen.
 now: "2024-12-21T09:21:00Z" # freeze the clock at this moment (omit for live)
 
 # Overlays
 showTimezoneBand: true      # hour-of-day numbers across the top
-showTimezoneBoundaries: true # offset bands + IANA hover popups
+showTimezoneBoundaries: true # 15° offset rectangle bands + IANA polygons
+showTimezonePopup: true     # live-time popup on hover/tap
 showUTC: true               # UTC time below the local clock
 
 # Bundle resolution (rarely needed; not exposed in the visual editor)
@@ -141,8 +157,13 @@ geo-clock-card:
   --geo-tz-bg: rgba(8, 14, 28, 0.85)
   --geo-tz-noon: "#ffd866"
   --geo-tz-mid: "#6ab0ff"
-  --geo-tz-line: rgba(255, 255, 255, 0.45)
+  --geo-tz-line: rgba(255, 255, 255, 0.18)
+  --geo-home-marker: var(--accent-color, "#ff7a3d")
 ```
+
+Most of these have a matching named config option (e.g. `dayBrightness`
+→ `--geo-day-brightness`); set in YAML when you're tweaking a single
+card, or in a theme when you want every dashboard's geo-clock to match.
 
 ## Imagery sources (all public domain)
 
@@ -179,6 +200,7 @@ center mode, time-scrubbing with solstice/equinox presets, etc.
 - [`src/timezone-band.ts`](src/timezone-band.ts) — top-of-map hour band + tick lines.
 - [`src/day-image.ts`](src/day-image.ts) — picks the right monthly daylight image for a given date.
 - [`src/geo-clock-card.ts`](src/geo-clock-card.ts) — the Lit element that wires it all together.
+- [`src/geo-clock-card-editor.ts`](src/geo-clock-card-editor.ts) — visual config editor (HA `ha-textfield` / `ha-select` / `ha-formfield` / `ha-switch` / `ha-entity-picker` / `ha-expansion-panel`); lazy-loaded by the card via `getConfigElement()` and bundled inline.
 
 The original design notes are in [`DESIGN.md`](DESIGN.md).
 
