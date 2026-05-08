@@ -1,7 +1,12 @@
 node_modules/
-dist/
 *.log
 .DS_Store
+
+# We track dist/ so HACS can install directly from a tagged release.
+# Source maps don't need to ship; the JPEGs/JSON are the same files
+# already committed under assets/, but HACS needs them sitting next
+# to geo-clock-card.js for the SVG <image href> resolution.
+dist/*.map
 
 # NASA source imagery cache (~230 MB of PNGs) — regenerate via
 # `npm run fetch-imagery`.

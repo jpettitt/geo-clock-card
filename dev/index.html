@@ -63,12 +63,16 @@
     <label><input id="utc" type="checkbox" checked> show UTC</label>
     <label><input id="band" type="checkbox" checked> show hour band</label>
     <label><input id="boundaries" type="checkbox" checked> show TZ boundaries</label>
+    <label><input id="homemarker" type="checkbox"> home marker</label>
     <label>center:
       <select id="center">
-        <option value="antimeridian" selected>antimeridian (Pacific)</option>
-        <option value="home">home (California −119°)</option>
-        <option value="sun">sun (subsolar)</option>
+        <option value="sun" selected>sun (subsolar)</option>
+        <option value="home">home (HA location)</option>
+        <option value="longitude">longitude</option>
       </select>
+    </label>
+    <label>centerLongitude:
+      <input id="centerLongitude" type="number" min="-180" max="180" step="1" value="-119" style="width: 70px">
     </label>
   </div>
   <div class="controls">
@@ -95,6 +99,8 @@
     const band = document.getElementById('band');
     const boundaries = document.getElementById('boundaries');
     const center = document.getElementById('center');
+    const centerLongitude = document.getElementById('centerLongitude');
+    const homemarker = document.getElementById('homemarker');
     const live = document.getElementById('live');
     const datetime = document.getElementById('datetime');
     const brightness = document.getElementById('brightness');
@@ -139,13 +145,21 @@
         twilightColor: twilightColor.value,
         twilightOpacity: Number(twilightOpacity.value),
         center: center.value,
-        homeLongitude: -119,
+        centerLongitude: Number(centerLongitude.value),
+        showHomeMarker: homemarker.checked,
         imageryBase: '../dist/',
       };
       if (!live.checked && datetime.value) {
         cfg.now = inputUtcToIso(datetime.value);
       }
       card.setConfig(cfg);
+      // Stub hass before mounting so 'home' / 'entity' modes resolve
+      // on the first render. (HA itself sets hass after construction
+      // too, but the preview is single-shot per rebuild.)
+      card.hass = {
+        config: { latitude: 36.5, longitude: -119 },
+        states: {},
+      };
       stage.appendChild(card);
       twilightVal.textContent = `${twilight.value}°`;
       tickVal.textContent = `${tick.value}s`;
@@ -171,6 +185,8 @@
     band.addEventListener('change', rebuild);
     boundaries.addEventListener('change', rebuild);
     center.addEventListener('change', rebuild);
+    centerLongitude.addEventListener('input', rebuild);
+    homemarker.addEventListener('change', rebuild);
     live.addEventListener('change', rebuild);
     datetime.addEventListener('input', () => {
       if (datetime.value) live.checked = false;

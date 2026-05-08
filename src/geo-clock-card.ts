@@ -2,7 +2,7 @@ import { LitElement, html, css, svg, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { subsolarPoint } from './sun.js';
 import { terminatorCurve, terminatorPolygon } from './terminator.js';
-import { polygonToSvgPoints } from './projection.js';
+import { polygonToSvgPoints, latLonToPx } from './projection.js';
 import { timezoneBand, BAND_H } from './timezone-band.js';
 import { loadTimezones, timezonesToPolygons, type TzPolygon } from './timezones.js';
 import {
@@ -24,10 +24,6 @@ const TZ_DATA = 'timezones.json';
 const TZ_IANA_DATA = 'timezones-iana.json';
 
 
-// Fallback when 'home' mode is requested but hass.config.longitude is
-// unavailable — used during the dev preview and as a safe default for
-// users who haven't set their HA location yet. Roughly central California.
-const DEFAULT_HOME_LON = -119;
 
 // The terminator + imagery + TZ overlay + hour band are derived from
 // the subsolar point and only meaningfully change when the subsolar
@@ -44,8 +40,17 @@ const HALF_PX_DEG_AT_4K = 360 / FOUR_K_WIDTH_PX / 2;
 const SUN_DEG_PER_MS = 15 / 3_600_000;
 const MAP_UPDATE_INTERVAL_MS = HALF_PX_DEG_AT_4K / SUN_DEG_PER_MS;
 
+// When the card is off-screen or the tab is backgrounded we cut the
+// timer all the way down to one update every 30 minutes — enough to
+// keep displayed values from being absurdly stale if the user
+// suddenly brings the card back, but cheap enough to be invisible
+// in CPU profiles. The card refreshes immediately the moment it
+// becomes visible again.
+const HIDDEN_INTERVAL_MS = 30 * 60 * 1000;
+
 interface HassLike {
   config?: { longitude?: number; latitude?: number };
+  states?: Record<string, { attributes?: Record<string, unknown> }>;
 }
 
 @customElement('geo-clock-card')
@@ -72,6 +77,13 @@ export class GeoClockCard extends LitElement {
 
   private config?: ResolvedConfig;
   private timer?: ReturnType<typeof setInterval>;
+  /** Combined "the card is visible right now" signal: viewport
+   *  intersection AND the document's tab visibility. When false we
+   *  switch the timer to a 30-minute cadence. */
+  private isCardVisible = true;
+  private intersecting = true;
+  private intersectionObserver?: IntersectionObserver;
+  private onTabVisibility?: () => void;
 
   static override styles = css`
     :host {
@@ -85,8 +97,9 @@ export class GeoClockCard extends LitElement {
       --geo-tz-noon: #ffd866;
       --geo-tz-mid: #6ab0ff;
       --geo-tz-tick: rgba(255, 255, 255, 0.35);
-      --geo-tz-line: rgba(255, 255, 255, 0.45);
-      --geo-tz-line-width: 1.1;
+      --geo-tz-line: rgba(255, 255, 255, 0.18);
+      --geo-tz-line-width: 1;
+      --geo-home-marker: var(--accent-color, #ff7a3d);
       --geo-day-brightness: 1.15;
       --geo-night-contrast: 1;
       --geo-twilight-color: #463701;
@@ -192,13 +205,29 @@ export class GeoClockCard extends LitElement {
        the user is over an interactive region. */
     .tz-iana-region {
       fill: rgba(255, 255, 255, 0);
-      stroke: none;
+      stroke: rgba(255, 255, 255, 0);
+      stroke-width: 0;
       pointer-events: visiblePainted;
       cursor: default;
-      transition: fill 120ms ease;
+      transition: fill 120ms ease, stroke 120ms ease, stroke-width 120ms ease;
     }
-    .tz-iana-region:hover {
-      fill: rgba(255, 255, 255, 0.07);
+    .tz-iana-region:hover,
+    .tz-iana-region.is-active {
+      fill: rgba(255, 255, 255, 0.08);
+      stroke: rgba(255, 255, 255, 0.65);
+      stroke-width: 1.5;
+    }
+    /* Home marker — small filled dot at hass.config lat/lon. */
+    .home-marker-dot {
+      fill: var(--geo-home-marker);
+      stroke: rgba(0, 0, 0, 0.6);
+      stroke-width: 1.2;
+      pointer-events: none;
+    }
+    .home-marker-halo {
+      fill: var(--geo-home-marker);
+      opacity: 0.25;
+      pointer-events: none;
     }
     /* Custom popup. Positioned via inline transform from JS so it
        follows the cursor; ignores its own pointer events so it never
@@ -222,6 +251,11 @@ export class GeoClockCard extends LitElement {
       font-weight: 600;
       font-variant-numeric: tabular-nums;
       letter-spacing: 0.02em;
+    }
+    .tz-popup-date {
+      font-size: 0.78rem;
+      opacity: 0.78;
+      margin-top: 1px;
     }
     .tz-popup-name {
       font-size: 0.9rem;
@@ -261,13 +295,22 @@ export class GeoClockCard extends LitElement {
       showUTC: config.showUTC ?? true,
       showTimezoneBand: config.showTimezoneBand ?? true,
       showTimezoneBoundaries: config.showTimezoneBoundaries ?? true,
+      showTimezonePopup: config.showTimezonePopup ?? true,
+      timezoneLineColor:
+        sanitizeCssColor(config.timezoneLineColor) ??
+        'rgba(255, 255, 255, 0.18)',
       dayBrightness: clamp(config.dayBrightness ?? 1.15, 0, 5),
       nightContrast: clamp(config.nightContrast ?? 1, 0, 5),
       twilightColor: sanitizeCssColor(config.twilightColor) ?? '#463701',
       twilightOpacity: clamp(config.twilightOpacity ?? 0.26, 0, 1),
       imageryBase: base.endsWith('/') ? base : base + '/',
-      center: config.center ?? 'antimeridian',
-      homeLongitude: config.homeLongitude,
+      center: config.center ?? 'sun',
+      centerLongitude:
+        typeof config.centerLongitude === 'number'
+          ? clamp(config.centerLongitude, -180, 180)
+          : undefined,
+      centerEntity: config.centerEntity,
+      showHomeMarker: config.showHomeMarker ?? false,
       frozenNow,
     };
     // Pin or release the clocks based on the frozen setting.
@@ -290,6 +333,7 @@ export class GeoClockCard extends LitElement {
       this.displayNow = now;
       this.mapNow = now;
     }
+    this.attachVisibilityObservers();
     this.restartTimer();
     this.maybeLoadTimezones();
     this.maybeLoadIanaTimezones();
@@ -298,13 +342,64 @@ export class GeoClockCard extends LitElement {
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.stopTimer();
+    this.clearDismissTimer();
+    this.detachVisibilityObservers();
+  }
+
+  /** Track whether this card is on-screen and the tab is foregrounded.
+   *  Either signal turning off cuts updates to a 30-minute cadence. */
+  private attachVisibilityObservers(): void {
+    if (typeof IntersectionObserver !== 'undefined' && !this.intersectionObserver) {
+      this.intersectionObserver = new IntersectionObserver(
+        (entries) => {
+          const e = entries[entries.length - 1];
+          this.intersecting = e ? e.isIntersecting : true;
+          this.recomputeVisibility();
+        },
+        { threshold: 0 },
+      );
+      this.intersectionObserver.observe(this);
+    }
+    if (typeof document !== 'undefined' && !this.onTabVisibility) {
+      this.onTabVisibility = () => this.recomputeVisibility();
+      document.addEventListener('visibilitychange', this.onTabVisibility);
+    }
+  }
+
+  private detachVisibilityObservers(): void {
+    this.intersectionObserver?.disconnect();
+    this.intersectionObserver = undefined;
+    if (this.onTabVisibility && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.onTabVisibility);
+    }
+    this.onTabVisibility = undefined;
+  }
+
+  private recomputeVisibility(): void {
+    const tabVisible =
+      typeof document === 'undefined' ||
+      document.visibilityState !== 'hidden';
+    const visible = this.intersecting && tabVisible;
+    if (visible === this.isCardVisible) return;
+    this.isCardVisible = visible;
+    if (visible) {
+      // Snap clocks forward to "now" so the user doesn't see a stale
+      // readout while the timer is restarting at fast cadence.
+      const now = new Date();
+      this.displayNow = now;
+      this.mapNow = now;
+    }
+    this.restartTimer();
   }
 
   private restartTimer(): void {
     this.stopTimer();
     if (!this.config || !this.isConnected) return;
     if (this.config.frozenNow) return; // frozen clock — no timer
-    this.timer = setInterval(() => this.tick(), this.config.updateInterval * 1000);
+    const intervalMs = this.isCardVisible
+      ? this.config.updateInterval * 1000
+      : HIDDEN_INTERVAL_MS;
+    this.timer = setInterval(() => this.tick(), intervalMs);
   }
 
   private tick(): void {
@@ -361,22 +456,45 @@ export class GeoClockCard extends LitElement {
    * Resolve the longitude (degrees, signed) that should appear at the
    * center of the map. Driven by mapNow — for 'sun' mode this means
    * the map shifts only when the subsolar longitude has moved enough
-   * to be visible (≥0.5 px at 4K).
+   * to be visible (≥0.5 px at 4K). Modes that depend on data we
+   * don't have (HA not loaded, entity missing) fall back to subsolar.
    */
   private resolveCenterLon(mapNow: Date): number {
-    if (!this.config) return 180;
+    if (!this.config) return subsolarPoint(mapNow).lon;
     switch (this.config.center) {
-      case 'sun':
-        return subsolarPoint(mapNow).lon;
       case 'home': {
-        const hassLon = this.hass?.config?.longitude;
-        if (typeof hassLon === 'number') return hassLon;
-        return this.config.homeLongitude ?? DEFAULT_HOME_LON;
+        const lon = this.hass?.config?.longitude;
+        if (typeof lon === 'number') return lon;
+        return subsolarPoint(mapNow).lon;
       }
-      case 'antimeridian':
+      case 'longitude':
+        if (typeof this.config.centerLongitude === 'number') {
+          return this.config.centerLongitude;
+        }
+        return subsolarPoint(mapNow).lon;
+      case 'entity': {
+        const id = this.config.centerEntity;
+        const lon = id
+          ? this.hass?.states?.[id]?.attributes?.longitude
+          : undefined;
+        if (typeof lon === 'number') return lon;
+        return subsolarPoint(mapNow).lon;
+      }
+      case 'sun':
       default:
-        return 180;
+        return subsolarPoint(mapNow).lon;
     }
+  }
+
+  /** Returns (lat, lon) for the home marker, or null if we have no
+   *  HA-configured location. Always reads from hass.config — the
+   *  marker represents the user's actual home regardless of the
+   *  map's centering mode. */
+  private resolveHomeLatLon(): { lat: number; lon: number } | null {
+    const lat = this.hass?.config?.latitude;
+    const lon = this.hass?.config?.longitude;
+    if (typeof lat !== 'number' || typeof lon !== 'number') return null;
+    return { lat, lon };
   }
 
   override render(): TemplateResult {
@@ -449,7 +567,8 @@ export class GeoClockCard extends LitElement {
       ` --geo-day-brightness: ${this.config.dayBrightness};` +
       ` --geo-night-contrast: ${this.config.nightContrast};` +
       ` --geo-twilight-color: ${this.config.twilightColor};` +
-      ` --geo-twilight-opacity: ${this.config.twilightOpacity};`;
+      ` --geo-twilight-opacity: ${this.config.twilightOpacity};` +
+      ` --geo-tz-line: ${this.config.timezoneLineColor};`;
 
     return html`
       <div class="frame" style="${frameStyle}">
@@ -519,19 +638,23 @@ export class GeoClockCard extends LitElement {
           ${this.tzPolygons && this.config.showTimezoneBoundaries
             ? this.tzPolygons.map(
                 (p) => svg`<path class="tz-region" d="${p.d}"
-                                 @mouseenter=${(e: MouseEvent) => this.onOffsetEnter(e, p)}
-                                 @mousemove=${this.onZoneMove}
-                                 @mouseleave=${this.onOffsetLeave}/>`,
+                                 @pointerenter=${(e: PointerEvent) => this.onOffsetEnter(e, p)}
+                                 @pointermove=${this.onZoneMove}
+                                 @pointerleave=${this.onOffsetLeave}/>`,
               )
             : ''}
           ${this.tzIanaPolygons && this.config.showTimezoneBoundaries
             ? this.tzIanaPolygons.map(
-                (p) => svg`<path class="tz-iana-region" d="${p.d}"
-                                 @mouseenter=${(e: MouseEvent) => this.onIanaEnter(e, p)}
-                                 @mousemove=${this.onZoneMove}
-                                 @mouseleave=${this.onIanaLeave}/>`,
+                (p) => svg`<path class="tz-iana-region${
+                                  this.hoveredIana === p ? ' is-active' : ''
+                                }" d="${p.d}"
+                                 @pointerenter=${(e: PointerEvent) => this.onIanaEnter(e, p)}
+                                 @pointermove=${this.onZoneMove}
+                                 @pointerleave=${this.onIanaLeave}/>`,
               )
             : ''}
+
+          ${this.config.showHomeMarker ? this.renderHomeMarker(centerLon) : ''}
 
           ${showBand ? timezoneBand(mapNow, MAP_W, centerLon) : ''}
         </svg>
@@ -551,29 +674,79 @@ export class GeoClockCard extends LitElement {
     return 4;
   }
 
-  private onIanaEnter = (e: MouseEvent, p: IanaPolygon): void => {
+  /** HA Lovelace hook: returns an element instance for the visual
+   *  card editor. Lazy-imported so the editor's HA-component
+   *  dependencies don't bloat the runtime card bundle. */
+  static async getConfigElement(): Promise<HTMLElement> {
+    await import('./geo-clock-card-editor.js');
+    return document.createElement('geo-clock-card-editor');
+  }
+
+  /** Returns a sensible default config for the card-picker preview. */
+  static getStubConfig(): GeoClockCardConfig {
+    return { type: 'custom:geo-clock-card', center: 'sun' };
+  }
+
+  /** Set when the user is touching the screen — the hover handlers
+   *  use this to keep the popup visible after lift instead of
+   *  dismissing immediately. */
+  private dismissTimer?: ReturnType<typeof setTimeout>;
+  private static readonly TOUCH_DISMISS_MS = 2500;
+
+  private clearDismissTimer(): void {
+    if (this.dismissTimer !== undefined) {
+      clearTimeout(this.dismissTimer);
+      this.dismissTimer = undefined;
+    }
+  }
+
+  private onIanaEnter = (e: PointerEvent, p: IanaPolygon): void => {
+    this.clearDismissTimer();
     this.hoveredIana = p;
     this.updateHoverPos(e);
   };
 
-  private onIanaLeave = (): void => {
+  private onIanaLeave = (e: PointerEvent): void => {
+    if (e.pointerType === 'touch') {
+      this.scheduleTouchDismiss(() => {
+        this.hoveredIana = null;
+        if (!this.hoveredOffset) this.hoverPos = null;
+      });
+      return;
+    }
     this.hoveredIana = null;
     if (!this.hoveredOffset) this.hoverPos = null;
   };
 
-  private onOffsetEnter = (e: MouseEvent, p: TzPolygon): void => {
+  private onOffsetEnter = (e: PointerEvent, p: TzPolygon): void => {
+    this.clearDismissTimer();
     this.hoveredOffset = p;
     this.updateHoverPos(e);
   };
 
-  private onOffsetLeave = (): void => {
+  private onOffsetLeave = (e: PointerEvent): void => {
+    if (e.pointerType === 'touch') {
+      this.scheduleTouchDismiss(() => {
+        this.hoveredOffset = null;
+        if (!this.hoveredIana) this.hoverPos = null;
+      });
+      return;
+    }
     this.hoveredOffset = null;
     if (!this.hoveredIana) this.hoverPos = null;
   };
 
-  private onZoneMove = (e: MouseEvent): void => {
+  private onZoneMove = (e: PointerEvent): void => {
     this.updateHoverPos(e);
   };
+
+  private scheduleTouchDismiss(action: () => void): void {
+    this.clearDismissTimer();
+    this.dismissTimer = setTimeout(() => {
+      this.dismissTimer = undefined;
+      action();
+    }, GeoClockCard.TOUCH_DISMISS_MS);
+  }
 
   private updateHoverPos(e: MouseEvent): void {
     const frame = (e.currentTarget as Element).closest('.frame');
@@ -582,20 +755,43 @@ export class GeoClockCard extends LitElement {
     this.hoverPos = { x: e.clientX - r.left, y: e.clientY - r.top };
   }
 
+  /** Render a small marker at the user's HA-configured home location.
+   *  Two SVG circles: a soft halo + a sharp dot, projected via the
+   *  current centerLon so it tracks correctly when the map drifts in
+   *  sun mode. Returns nothing if no home location is available. */
+  private renderHomeMarker(centerLon: number) {
+    const home = this.resolveHomeLatLon();
+    if (!home) return '';
+    const { x, y } = latLonToPx(home.lat, home.lon, MAP_W, MAP_H, centerLon);
+    return svg`
+      <circle class="home-marker-halo" cx="${x}" cy="${y}" r="22"/>
+      <circle class="home-marker-dot"  cx="${x}" cy="${y}" r="7"/>
+    `;
+  }
+
   private renderPopup(displayNow: Date): TemplateResult {
     if (!this.hoverPos) return html``;
+    if (this.config?.showTimezonePopup === false) return html``;
 
-    // Position the popup to the lower-right of the cursor; flip
-    // to the left side when past the midline so it doesn't fall
-    // off the right edge.
+    // Position the popup near the cursor:
+    //  - horizontal: lower-right by default; flip to the left when
+    //    past the canvas midline so it doesn't fall off the right edge.
+    //  - vertical:   below the cursor by default; flip to ABOVE when
+    //    the cursor is in the bottom half so the popup doesn't fall
+    //    off the bottom edge of the card.
+    // The vertical flip uses translateY(-100%) so we don't need to
+    // measure the popup's actual height.
     const frame = this.shadowRoot?.querySelector('.frame') as HTMLElement | null;
     const w = frame?.clientWidth ?? 1280;
-    const flip = this.hoverPos.x > w * 0.55;
-    const popupOffsetX = flip ? -260 : 14;
-    const popupOffsetY = 14;
-    const transform =
-      `translate(${this.hoverPos.x + popupOffsetX}px, ${this.hoverPos.y + popupOffsetY}px)`;
-    const style = `transform: ${transform};`;
+    const h = frame?.clientHeight ?? 720;
+    const flipX = this.hoverPos.x > w * 0.55;
+    const flipY = this.hoverPos.y > h * 0.5;
+    const popupOffsetX = flipX ? -260 : 14;
+    const popupOffsetY = flipY ? -14 : 14;
+    const yShift = flipY ? ' translateY(-100%)' : '';
+    const style =
+      `transform: translate(${this.hoverPos.x + popupOffsetX}px, ` +
+      `${this.hoverPos.y + popupOffsetY}px)${yShift};`;
 
     // IANA hover takes priority — it's DST-aware and represents an
     // actual jurisdiction. Fall back to the offset overlay when the
@@ -607,6 +803,7 @@ export class GeoClockCard extends LitElement {
       return html`
         <div class="tz-popup" style=${style}>
           <div class="tz-popup-time">${live.time}</div>
+          <div class="tz-popup-date">${live.date}</div>
           <div class="tz-popup-name">${live.name}</div>
           <div class="tz-popup-city">${z.cityLabel}</div>
           <div class="tz-popup-offset">${live.offset} · ${z.tzid}</div>
@@ -615,10 +812,11 @@ export class GeoClockCard extends LitElement {
     }
     if (this.hoveredOffset) {
       const z = this.hoveredOffset;
-      const time = formatTimeAtOffset(displayNow, z.offset);
+      const live = atOffset(displayNow, z.offset);
       return html`
         <div class="tz-popup" style=${style}>
-          <div class="tz-popup-time">${time}</div>
+          <div class="tz-popup-time">${live.time}</div>
+          <div class="tz-popup-date">${live.date}</div>
           ${z.name
             ? html`<div class="tz-popup-name">${z.name}</div>`
             : ''}
@@ -633,15 +831,29 @@ export class GeoClockCard extends LitElement {
   }
 }
 
-function formatTimeAtOffset(now: Date, offsetHours: number): string {
-  // Shift UTC by the offset, then read the result with UTC getters
-  // (so we don't double-apply the runner's local timezone). Used for
-  // ocean fallback where there's no IANA tzid to feed Intl.
+/** Locale-formatted time + date at a numeric UTC offset. Used for
+ *  the offset popup branch (open ocean / Antarctic strips that have
+ *  no IANA tzid). We shift UTC by the offset and feed the shifted
+ *  Date into Intl with `timeZone: 'UTC'` so the runtime locale
+ *  decides 24-hour vs AM/PM but no further zone math is applied. */
+function atOffset(
+  now: Date,
+  offsetHours: number,
+): { time: string; date: string } {
   const shifted = new Date(now.getTime() + offsetHours * 3_600_000);
-  const hh = String(shifted.getUTCHours()).padStart(2, '0');
-  const mm = String(shifted.getUTCMinutes()).padStart(2, '0');
-  const ss = String(shifted.getUTCSeconds()).padStart(2, '0');
-  return `${hh}:${mm}:${ss}`;
+  const time = new Intl.DateTimeFormat(undefined, {
+    timeZone: 'UTC',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(shifted);
+  const date = new Intl.DateTimeFormat(undefined, {
+    timeZone: 'UTC',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  }).format(shifted);
+  return { time, date };
 }
 
 function clamp(n: number, lo: number, hi: number): number {

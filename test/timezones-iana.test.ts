@@ -52,33 +52,52 @@ describe('ianaToPolygons', () => {
 });
 
 describe('zoneNow', () => {
+  // Pin tests to en-GB so the locale-default time format is 24-hour
+  // and the date format is predictable across CI runners.
+  const LOC = 'en-GB';
+
   it('returns DST-aware long name for America/New_York in summer', () => {
     // 2024-07-15 18:00 UTC = 14:00 EDT
-    const r = zoneNow(new Date('2024-07-15T18:00:00Z'), 'America/New_York');
+    const r = zoneNow(new Date('2024-07-15T18:00:00Z'), 'America/New_York', LOC);
     expect(r.time).toBe('14:00:00');
     expect(r.name).toBe('Eastern Daylight Time');
     expect(r.offset).toBe('UTC-04:00');
+    // Same calendar date as UTC since the offset only shifts hours.
+    expect(r.date).toMatch(/Mon.*15.*Jul/);
   });
 
   it('returns standard time for America/New_York in winter', () => {
     // 2024-01-15 18:00 UTC = 13:00 EST
-    const r = zoneNow(new Date('2024-01-15T18:00:00Z'), 'America/New_York');
+    const r = zoneNow(new Date('2024-01-15T18:00:00Z'), 'America/New_York', LOC);
     expect(r.time).toBe('13:00:00');
     expect(r.name).toBe('Eastern Standard Time');
     expect(r.offset).toBe('UTC-05:00');
   });
 
+  it('returns AM/PM time format under en-US locale', () => {
+    const r = zoneNow(new Date('2024-07-15T18:00:00Z'), 'America/New_York', 'en-US');
+    // en-US default is 12-hour with AM/PM marker
+    expect(r.time).toMatch(/2:00:00\s?PM/);
+  });
+
   it('handles fractional offsets like India (UTC+05:30, no DST)', () => {
-    const r = zoneNow(new Date('2024-07-15T12:00:00Z'), 'Asia/Kolkata');
+    const r = zoneNow(new Date('2024-07-15T12:00:00Z'), 'Asia/Kolkata', LOC);
     expect(r.time).toBe('17:30:00');
     expect(r.offset).toBe('UTC+05:30');
   });
 
   it('handles Australia (UTC+10:00 AEST in winter, +11:00 AEDT in summer)', () => {
     // Southern hemisphere — January is Aussie summer (DST in NSW, etc.)
-    const summer = zoneNow(new Date('2024-01-15T00:00:00Z'), 'Australia/Sydney');
+    const summer = zoneNow(new Date('2024-01-15T00:00:00Z'), 'Australia/Sydney', LOC);
     expect(summer.offset).toBe('UTC+11:00');
-    const winter = zoneNow(new Date('2024-07-15T00:00:00Z'), 'Australia/Sydney');
+    const winter = zoneNow(new Date('2024-07-15T00:00:00Z'), 'Australia/Sydney', LOC);
     expect(winter.offset).toBe('UTC+10:00');
+  });
+
+  it('returns a different `date` from UTC when the zone has rolled over', () => {
+    // Sunday 2024-12-29 23:30 UTC; in Auckland (UTC+13 with DST) it's
+    // already Monday 2024-12-30 12:30.
+    const r = zoneNow(new Date('2024-12-29T23:30:00Z'), 'Pacific/Auckland', LOC);
+    expect(r.date).toMatch(/Mon.*30.*Dec/);
   });
 });

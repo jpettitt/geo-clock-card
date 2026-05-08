@@ -10,6 +10,9 @@ export default {
     file: 'dist/geo-clock-card.js',
     format: 'es',
     sourcemap: true,
+    // The card lazy-imports the editor via getConfigElement(); bundle
+    // it into the same file so HACS only ships one JS asset.
+    inlineDynamicImports: true,
   },
   plugins: [
     typescript({ tsconfig: './tsconfig.json' }),

@@ -140,56 +140,86 @@ export function cityFromTzid(tzid: string): string {
 }
 
 /** What we get back from `Intl.DateTimeFormat` for a given moment in
- *  a given IANA zone. All three fields are DST-aware: in summer for
- *  America/New_York you'll see e.g. `time: "13:42:15"`, `name:
- *  "Eastern Daylight Time"`, `offset: "GMT-04:00"`. */
+ *  a given IANA zone. All four fields are DST-aware: in summer for
+ *  America/New_York you'll see e.g. `time: "1:42:15 PM"` (in en-US)
+ *  or `"13:42:15"` (in en-GB), `name: "Eastern Daylight Time"`,
+ *  `offset: "UTC-04:00"`, plus the local `date` (which may differ
+ *  from the user's date when hovering the far side of the planet). */
 export interface ZoneNow {
   time: string;
+  date: string;
   name: string;
   offset: string;
 }
 
-const PART_FORMATTER_CACHE = new Map<string, Intl.DateTimeFormat>();
-const OFFSET_FORMATTER_CACHE = new Map<string, Intl.DateTimeFormat>();
+interface FormatterSet {
+  time: Intl.DateTimeFormat;
+  date: Intl.DateTimeFormat;
+  zoneName: Intl.DateTimeFormat;
+  offset: Intl.DateTimeFormat;
+}
 
-function partFormatter(tzid: string): Intl.DateTimeFormat {
-  let f = PART_FORMATTER_CACHE.get(tzid);
+const FORMATTER_CACHE = new Map<string, FormatterSet>();
+
+function formatters(tzid: string, locale?: string | string[]): FormatterSet {
+  // Cache key includes the locale so a user changing UI language
+  // gets fresh formatters. `undefined` is encoded as the empty
+  // string so the cache stays a plain Map.
+  const key = `${tzid}|${
+    Array.isArray(locale) ? locale.join(',') : locale ?? ''
+  }`;
+  let f = FORMATTER_CACHE.get(key);
   if (!f) {
-    f = new Intl.DateTimeFormat('en-US', {
-      timeZone: tzid,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      timeZoneName: 'long',
-    });
-    PART_FORMATTER_CACHE.set(tzid, f);
+    // `undefined` → Intl uses navigator.language (or runtime default
+    // in Node). `hour12` left unspecified on purpose so the locale
+    // decides 24-hour vs AM/PM.
+    f = {
+      time: new Intl.DateTimeFormat(locale, {
+        timeZone: tzid,
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+      date: new Intl.DateTimeFormat(locale, {
+        timeZone: tzid,
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+      }),
+      // Long zone-name formatter: we still ask for time + name so
+      // formatToParts gives us the timeZoneName part; the locale
+      // here doesn't materially change what we extract.
+      zoneName: new Intl.DateTimeFormat('en-US', {
+        timeZone: tzid,
+        hour: 'numeric',
+        timeZoneName: 'long',
+      }),
+      offset: new Intl.DateTimeFormat('en-US', {
+        timeZone: tzid,
+        timeZoneName: 'longOffset',
+      }),
+    };
+    FORMATTER_CACHE.set(key, f);
   }
   return f;
 }
 
-function offsetFormatter(tzid: string): Intl.DateTimeFormat {
-  let f = OFFSET_FORMATTER_CACHE.get(tzid);
-  if (!f) {
-    f = new Intl.DateTimeFormat('en-US', {
-      timeZone: tzid,
-      timeZoneName: 'longOffset',
-    });
-    OFFSET_FORMATTER_CACHE.set(tzid, f);
-  }
-  return f;
-}
-
-export function zoneNow(now: Date, tzid: string): ZoneNow {
-  const parts = partFormatter(tzid).formatToParts(now);
-  const offParts = offsetFormatter(tzid).formatToParts(now);
-  const get = (arr: Intl.DateTimeFormatPart[], type: string) =>
-    arr.find((p) => p.type === type)?.value ?? '';
-  // hour can come back as "24" for midnight in some locales — clamp.
-  const hh = get(parts, 'hour') === '24' ? '00' : get(parts, 'hour');
+export function zoneNow(
+  now: Date,
+  tzid: string,
+  locale?: string | string[],
+): ZoneNow {
+  const f = formatters(tzid, locale);
+  const get = (
+    parts: Intl.DateTimeFormatPart[],
+    type: string,
+  ): string => parts.find((p) => p.type === type)?.value ?? '';
+  const nameParts = f.zoneName.formatToParts(now);
+  const offsetParts = f.offset.formatToParts(now);
   return {
-    time: `${hh}:${get(parts, 'minute')}:${get(parts, 'second')}`,
-    name: get(parts, 'timeZoneName'),
-    offset: get(offParts, 'timeZoneName').replace(/^GMT/, 'UTC'),
+    time: f.time.format(now),
+    date: f.date.format(now),
+    name: get(nameParts, 'timeZoneName'),
+    offset: get(offsetParts, 'timeZoneName').replace(/^GMT/, 'UTC'),
   };
 }
