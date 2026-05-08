@@ -1,13 +1,12 @@
 name: Deploy to R2
 
-# Pushes the geoclock.world site (everything in docs/web/) to the R2
-# bucket that fronts the domain. Runs on every push to main, so any
-# edit to index.html, preview.png, or future logo.svg goes live within
-# a minute of the merge.
-#
-# Versioned card assets (geo-clock-card.js + imagery, under /v<X.Y.Z>/)
-# are NOT touched by this workflow — see release.yml for the per-tag
-# asset deployment.
+# Two-stage deploy on every push to main:
+#   1. Build the card from source so dist/ is current.
+#   2. Sync docs/web/ to the bucket root (the geoclock.world site).
+#   3. Sync dist/ to /v<package.json#version>/ (the versioned card
+#      assets the site imports). No --delete on this step — old
+#      tagged paths stay around forever so deep-linked snapshots
+#      (e.g. anyone embedding /v0.2.0/...) keep working.
 
 on:
   push:
@@ -19,6 +18,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Read version from package.json
+        id: version
+        run: |
+          echo "version=$(node -p 'require(\"./package.json\").version')" \
+            >> "$GITHUB_OUTPUT"
+
       - name: Configure AWS CLI for R2
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -29,11 +46,26 @@ jobs:
           aws configure set aws_secret_access_key $R2_SECRET_ACCESS_KEY
           aws configure set region auto
 
-      - name: Sync to R2
+      - name: Sync site (docs/web → bucket root)
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
         run: |
           aws s3 sync ./docs/web s3://geoclock-world \
             --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com \
             --delete \
-            --exclude 'v*/*'
+            --exclude 'v*/*' \
+            --exclude 'README.md'
+
+      - name: Sync versioned card assets (dist/ → /v$VERSION/)
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # No --delete — old releases stay forever; URLs are version-
+          # pinned so cache lifetime is set to 1 year immutable.
+          # *.map is excluded because source maps leak source structure
+          # and aren't part of the shipped card.
+          aws s3 sync ./dist s3://geoclock-world/v$VERSION/ \
+            --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com \
+            --cache-control 'public, max-age=31536000, immutable' \
+            --exclude '*.map'
