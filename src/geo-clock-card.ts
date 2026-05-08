@@ -452,12 +452,23 @@ export class GeoClockCard extends LitElement {
       });
   }
 
+  /** Used for fallbacks below — Greenwich rather than subsolar so a
+   *  misconfigured non-sun mode looks visibly different from sun. */
+  private static readonly FALLBACK_CENTER_LON = 0;
+  private warnedFallback = '';
+
   /**
    * Resolve the longitude (degrees, signed) that should appear at the
    * center of the map. Driven by mapNow — for 'sun' mode this means
    * the map shifts only when the subsolar longitude has moved enough
-   * to be visible (≥0.5 px at 4K). Modes that depend on data we
-   * don't have (HA not loaded, entity missing) fall back to subsolar.
+   * to be visible (≥0.5 px at 4K).
+   *
+   * Modes that need data which isn't available (no HA longitude,
+   * entity missing, centerLongitude unset) fall back to GREENWICH
+   * (lon=0), not subsolar — that way a broken `home` config doesn't
+   * look identical to `sun` mode and the user sees their selection
+   * registered. A console warning is emitted so the cause is visible
+   * in DevTools.
    */
   private resolveCenterLon(mapNow: Date): number {
     if (!this.config) return subsolarPoint(mapNow).lon;
@@ -465,25 +476,47 @@ export class GeoClockCard extends LitElement {
       case 'home': {
         const lon = this.hass?.config?.longitude;
         if (typeof lon === 'number') return lon;
-        return subsolarPoint(mapNow).lon;
+        this.warnFallback(
+          'home',
+          'hass.config.longitude is not set; falling back to Greenwich (0°)',
+        );
+        return GeoClockCard.FALLBACK_CENTER_LON;
       }
       case 'longitude':
         if (typeof this.config.centerLongitude === 'number') {
           return this.config.centerLongitude;
         }
-        return subsolarPoint(mapNow).lon;
+        this.warnFallback(
+          'longitude',
+          'centerLongitude not set; falling back to Greenwich (0°)',
+        );
+        return GeoClockCard.FALLBACK_CENTER_LON;
       case 'entity': {
         const id = this.config.centerEntity;
-        const lon = id
-          ? this.hass?.states?.[id]?.attributes?.longitude
-          : undefined;
+        const state = id ? this.hass?.states?.[id] : undefined;
+        const lon = state?.attributes?.longitude;
         if (typeof lon === 'number') return lon;
-        return subsolarPoint(mapNow).lon;
+        this.warnFallback(
+          'entity',
+          id
+            ? `entity '${id}' has no numeric longitude attribute; falling back to Greenwich (0°)`
+            : 'centerEntity not set; falling back to Greenwich (0°)',
+        );
+        return GeoClockCard.FALLBACK_CENTER_LON;
       }
       case 'sun':
       default:
         return subsolarPoint(mapNow).lon;
     }
+  }
+
+  /** De-duped console warning per (mode, message) so we don't spam
+   *  the console with the same warning every render. */
+  private warnFallback(mode: string, message: string): void {
+    const key = `${mode}|${message}`;
+    if (this.warnedFallback === key) return;
+    this.warnedFallback = key;
+    console.warn(`geo-clock-card: center mode '${mode}' — ${message}`);
   }
 
   /** Returns (lat, lon) for the home marker, or null if we have no

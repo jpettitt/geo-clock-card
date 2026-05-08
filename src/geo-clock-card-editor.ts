@@ -23,8 +23,10 @@ export class GeoClockCardEditor extends LitElement {
   @state() private _config?: GeoClockCardConfig;
 
   setConfig(config: GeoClockCardConfig): void {
+    console.debug('geo-clock-card editor: setConfig', config);
     this._config = config;
   }
+
 
   static override styles = css`
     :host {
@@ -55,6 +57,9 @@ export class GeoClockCardEditor extends LitElement {
     ha-entity-picker {
       width: 100%;
     }
+    ha-entity-picker {
+      display: block;
+    }
     ha-formfield {
       display: block;
       padding: 4px 0;
@@ -78,11 +83,35 @@ export class GeoClockCardEditor extends LitElement {
       cursor: pointer;
       background: transparent;
     }
+    /* Native select styled to match HA's input look. We use this for
+       the center-mode dropdown because ha-select's selected event
+       has been fragile across HA frontend versions. */
+    .native-select {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .native-select label {
+      font-size: 0.85rem;
+      color: var(--secondary-text-color, #666);
+    }
+    .native-select select {
+      width: 100%;
+      padding: 12px 8px;
+      font-size: 1rem;
+      color: var(--primary-text-color, #000);
+      background: var(--card-background-color, #fff);
+      border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.2));
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
   `;
 
   /** Emit a config-changed event with `field` set (or removed when
    *  value is undefined / empty string). Bubbles + composed so HA's
-   *  editor host catches it. */
+   *  editor host catches it. We log the dispatch so the data flow
+   *  is visible in DevTools — handy for diagnosing why a saved
+   *  config isn't matching the form's selection. */
   private fire(field: keyof GeoClockCardConfig, value: unknown): void {
     if (!this._config) return;
     const next: Record<string, unknown> = { ...this._config };
@@ -91,9 +120,7 @@ export class GeoClockCardEditor extends LitElement {
     } else {
       next[field as string] = value;
     }
-    if (
-      JSON.stringify(next) === JSON.stringify(this._config)
-    ) return;
+    console.debug('geo-clock-card editor: dispatch', field, '→', value, next);
     this.dispatchEvent(
       new CustomEvent('config-changed', {
         detail: { config: next },
@@ -123,13 +150,12 @@ export class GeoClockCardEditor extends LitElement {
     };
   }
 
-  private select(field: keyof GeoClockCardConfig) {
-    return (e: Event) => {
-      // ha-select fires a `selected` or `change` with target.value
-      const v = (e.target as HTMLSelectElement).value;
-      this.fire(field, v);
-    };
-  }
+  private static readonly CENTER_MODES = [
+    'sun',
+    'home',
+    'longitude',
+    'entity',
+  ] as const;
 
   override render(): TemplateResult {
     if (!this._config) return html``;
@@ -139,17 +165,32 @@ export class GeoClockCardEditor extends LitElement {
     return html`
       <div class="section">
         <div class="section-title">Map centering</div>
-        <ha-select
-          label="Center on"
-          .value=${center}
-          @selected=${this.select('center')}
-          @closed=${(e: Event) => e.stopPropagation()}
-        >
-          <mwc-list-item value="sun">Sun (subsolar point — drifts with daylight)</mwc-list-item>
-          <mwc-list-item value="home">Home (Home Assistant location)</mwc-list-item>
-          <mwc-list-item value="longitude">Specific longitude</mwc-list-item>
-          <mwc-list-item value="entity">Follow an entity</mwc-list-item>
-        </ha-select>
+        <div class="native-select">
+          <label for="geo-center-mode">Center on</label>
+          <select
+            id="geo-center-mode"
+            .value=${center}
+            @change=${(e: Event) => {
+              const v = (e.target as HTMLSelectElement).value;
+              if (GeoClockCardEditor.CENTER_MODES.includes(v as 'sun')) {
+                this.fire('center', v);
+              }
+            }}
+          >
+            <option value="sun" ?selected=${center === 'sun'}>
+              Sun (subsolar point — drifts with daylight)
+            </option>
+            <option value="home" ?selected=${center === 'home'}>
+              Home (Home Assistant location)
+            </option>
+            <option value="longitude" ?selected=${center === 'longitude'}>
+              Specific longitude
+            </option>
+            <option value="entity" ?selected=${center === 'entity'}>
+              Follow an entity
+            </option>
+          </select>
+        </div>
 
         ${center === 'longitude'
           ? html`
@@ -173,12 +214,16 @@ export class GeoClockCardEditor extends LitElement {
                 label="Entity to follow"
                 .value=${c.centerEntity ?? ''}
                 .includeDomains=${['zone', 'person', 'device_tracker']}
+                .entityFilter=${(entity: {
+                  attributes?: { longitude?: unknown };
+                }) => typeof entity?.attributes?.longitude === 'number'}
+                allow-custom-entity
                 @value-changed=${(e: CustomEvent) =>
                   this.fire('centerEntity', e.detail.value)}
               ></ha-entity-picker>
               <div class="help">
-                Entity must expose a <code>longitude</code> attribute (zones,
-                persons, and most device trackers do).
+                Filtered to zone / person / device_tracker entities that
+                currently expose a numeric <code>longitude</code> attribute.
               </div>
             `
           : ''}
@@ -313,4 +358,5 @@ export class GeoClockCardEditor extends LitElement {
     if (/^#[0-9a-f]{6,8}$/i.test(value)) return value.slice(0, 7);
     return '#ffffff';
   }
+
 }
