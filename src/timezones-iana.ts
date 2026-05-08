@@ -131,6 +131,65 @@ export function ringToWrappedD(
   return d;
 }
 
+/**
+ * Find the IANA tzid whose polygon contains (lat, lon).
+ *
+ * Operates on the raw GeoJSON coordinates rather than projected pixels
+ * so the result is independent of map centering. Uses a ray-casting
+ * point-in-polygon test on the outer ring of each (multi)polygon and
+ * returns the FIRST match — there is no ocean fallback. Callers wanting
+ * an offset fallback for points over open ocean should handle the
+ * `null` return themselves.
+ *
+ * O(n × vertices) per call. The 1%-simplified dataset has ~419 zones
+ * and ~12k vertices total, so a lookup is ~ms — fine for one-off marker
+ * resolution; cache the result if you'd be calling on a tight loop.
+ */
+export function findIanaZoneForLatLon(
+  data: IanaFeatureCollection,
+  lat: number,
+  lon: number,
+): string | null {
+  if (
+    typeof lat !== 'number' ||
+    typeof lon !== 'number' ||
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lon)
+  ) {
+    return null;
+  }
+  for (const f of data.features) {
+    const polygons: number[][][][] =
+      f.geometry.type === 'Polygon'
+        ? [f.geometry.coordinates as number[][][]]
+        : (f.geometry.coordinates as number[][][][]);
+    for (const polygon of polygons) {
+      if (polygon.length === 0) continue;
+      // GeoJSON ring 0 is the outer boundary; subsequent rings are
+      // holes. Holes are rare in TZ polygons and ignored here — the
+      // simplified dataset has no enclaves we'd accidentally claim.
+      if (pointInRing(polygon[0], lon, lat)) return f.properties.tzid;
+    }
+  }
+  return null;
+}
+
+/** Standard ray-casting point-in-polygon, ring is `[lon, lat][]`. */
+function pointInRing(ring: number[][], lon: number, lat: number): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0];
+    const yi = ring[i][1];
+    const xj = ring[j][0];
+    const yj = ring[j][1];
+    const intersect =
+      yi > lat !== yj > lat &&
+      lon < ((xj - xi) * (lat - yi)) / (yj - yi || Number.EPSILON) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
 /** "America/New_York" → "New York"; "Asia/Argentina/Buenos_Aires"
  *  → "Buenos Aires". Falls back to the raw tzid for malformed IDs. */
 export function cityFromTzid(tzid: string): string {

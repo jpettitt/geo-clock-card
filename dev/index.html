@@ -64,6 +64,28 @@
     <label><input id="band" type="checkbox" checked> show hour band</label>
     <label><input id="boundaries" type="checkbox" checked> show TZ boundaries</label>
     <label><input id="homemarker" type="checkbox"> home marker</label>
+    <label><input id="homemarkerlabel" type="checkbox"> home marker label + time</label>
+    <label><input id="markers" type="checkbox"> sample markers (London, Tokyo)</label>
+    <label>marker labels:
+      <select id="markerLabelMode">
+        <option value="always" selected>always</option>
+        <option value="hover">hover only</option>
+      </select>
+    </label>
+    <label><input id="markerShowDay" type="checkbox" checked> show weekday on markers</label>
+    <label>marker default color:
+      <input id="markerColor" type="color" value="#3da9fc">
+    </label>
+    <label>tz line color:
+      <input id="tzLineColor" type="color" value="#ffffff">
+    </label>
+    <label>main time source:
+      <select id="mainTimeSource">
+        <option value="home" selected>home (HA tz)</option>
+        <option value="device">device</option>
+        <option value="entity">entity</option>
+      </select>
+    </label>
     <label>center:
       <select id="center">
         <option value="sun" selected>sun (subsolar)</option>
@@ -101,6 +123,13 @@
     const center = document.getElementById('center');
     const centerLongitude = document.getElementById('centerLongitude');
     const homemarker = document.getElementById('homemarker');
+    const homemarkerlabel = document.getElementById('homemarkerlabel');
+    const markersEl = document.getElementById('markers');
+    const markerLabelMode = document.getElementById('markerLabelMode');
+    const markerShowDayEl = document.getElementById('markerShowDay');
+    const markerColor = document.getElementById('markerColor');
+    const tzLineColor = document.getElementById('tzLineColor');
+    const mainTimeSource = document.getElementById('mainTimeSource');
     const live = document.getElementById('live');
     const datetime = document.getElementById('datetime');
     const brightness = document.getElementById('brightness');
@@ -147,8 +176,23 @@
         center: center.value,
         centerLongitude: Number(centerLongitude.value),
         showHomeMarker: homemarker.checked,
+        showHomeMarkerLabel: homemarkerlabel.checked,
+        markerLabelMode: markerLabelMode.value,
+        markerShowDay: markerShowDayEl.checked,
+        markerColor: markerColor.value,
+        timezoneLineColor: tzLineColor.value,
+        mainTimeSource: mainTimeSource.value,
         imageryBase: '../dist/',
       };
+      if (markersEl.checked) {
+        cfg.markers = [
+          { entity: 'zone.london', label: 'London', color: '#3da9fc' },
+          { entity: 'zone.tokyo', label: 'Tokyo', color: '#ff7a3d' },
+        ];
+      }
+      if (mainTimeSource.value === 'entity') {
+        cfg.mainTimeEntity = 'zone.london';
+      }
       if (!live.checked && datetime.value) {
         cfg.now = inputUtcToIso(datetime.value);
       }
@@ -157,8 +201,27 @@
       // on the first render. (HA itself sets hass after construction
       // too, but the preview is single-shot per rebuild.)
       card.hass = {
-        config: { latitude: 36.5, longitude: -119 },
-        states: {},
+        config: {
+          latitude: 36.5,
+          longitude: -119,
+          time_zone: 'America/Los_Angeles',
+        },
+        states: {
+          'zone.london': {
+            attributes: {
+              latitude: 51.5074,
+              longitude: -0.1278,
+              friendly_name: 'London',
+            },
+          },
+          'zone.tokyo': {
+            attributes: {
+              latitude: 35.6762,
+              longitude: 139.6503,
+              friendly_name: 'Tokyo',
+            },
+          },
+        },
       };
       stage.appendChild(card);
       twilightVal.textContent = `${twilight.value}°`;
@@ -187,6 +250,13 @@
     center.addEventListener('change', rebuild);
     centerLongitude.addEventListener('input', rebuild);
     homemarker.addEventListener('change', rebuild);
+    homemarkerlabel.addEventListener('change', rebuild);
+    markersEl.addEventListener('change', rebuild);
+    markerLabelMode.addEventListener('change', rebuild);
+    markerShowDayEl.addEventListener('change', rebuild);
+    markerColor.addEventListener('change', rebuild);
+    tzLineColor.addEventListener('change', rebuild);
+    mainTimeSource.addEventListener('change', rebuild);
     live.addEventListener('change', rebuild);
     datetime.addEventListener('input', () => {
       if (datetime.value) live.checked = false;

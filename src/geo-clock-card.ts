@@ -9,10 +9,16 @@ import {
   loadIanaTimezones,
   ianaToPolygons,
   zoneNow,
+  findIanaZoneForLatLon,
   type IanaPolygon,
 } from './timezones-iana.js';
 import { dayImageForDate } from './day-image.js';
-import type { GeoClockCardConfig, ResolvedConfig } from './types.js';
+import type {
+  GeoClockCardConfig,
+  HassLike,
+  MarkerConfig,
+  ResolvedConfig,
+} from './types.js';
 
 // Equirectangular working canvas. The SVG scales to fit, so this is
 // just internal coordinate space for the polygon math + image extents.
@@ -48,10 +54,8 @@ const MAP_UPDATE_INTERVAL_MS = HALF_PX_DEG_AT_4K / SUN_DEG_PER_MS;
 // becomes visible again.
 const HIDDEN_INTERVAL_MS = 30 * 60 * 1000;
 
-interface HassLike {
-  config?: { longitude?: number; latitude?: number };
-  states?: Record<string, { attributes?: Record<string, unknown> }>;
-}
+// HassLike is hoisted to types.ts so the editor can share the same
+// minimal shape — see types.ts for the field-by-field rationale.
 
 @customElement('geo-clock-card')
 export class GeoClockCard extends LitElement {
@@ -73,6 +77,7 @@ export class GeoClockCard extends LitElement {
   private tzIanaData: Awaited<ReturnType<typeof loadIanaTimezones>> | null = null;
   @state() private hoveredIana: IanaPolygon | null = null;
   @state() private hoveredOffset: TzPolygon | null = null;
+  @state() private hoveredMarker: ResolvedMarker | null = null;
   @state() private hoverPos: { x: number; y: number } | null = null;
 
   private config?: ResolvedConfig;
@@ -100,6 +105,7 @@ export class GeoClockCard extends LitElement {
       --geo-tz-line: rgba(255, 255, 255, 0.18);
       --geo-tz-line-width: 1;
       --geo-home-marker: var(--accent-color, #ff7a3d);
+      --geo-marker-color: #3da9fc;
       --geo-day-brightness: 1.15;
       --geo-night-contrast: 1;
       --geo-twilight-color: #463701;
@@ -217,17 +223,98 @@ export class GeoClockCard extends LitElement {
       stroke: rgba(255, 255, 255, 0.65);
       stroke-width: 1.5;
     }
-    /* Home marker — small filled dot at hass.config lat/lon. */
-    .home-marker-dot {
-      fill: var(--geo-home-marker);
-      stroke: rgba(0, 0, 0, 0.6);
-      stroke-width: 1.2;
-      pointer-events: none;
+    /* Home marker — overlay sibling of the SVG, same shape/CSS as
+       a regular marker but coloured via the home-specific theme
+       variable so users can restyle without touching card config.
+       The selector specificity (.home-marker .marker-halo /
+       .marker-dot) beats the bare .marker-halo / .marker-dot rules
+       above, so the home marker uses --geo-home-marker rather than
+       --geo-marker-color. The dot is non-interactive (no popup);
+       the label is rendered inline when showHomeMarkerLabel is true. */
+    .home-marker .marker-halo,
+    .home-marker .marker-dot {
+      background: var(--geo-home-marker);
     }
-    .home-marker-halo {
-      fill: var(--geo-home-marker);
-      opacity: 0.25;
+    .home-marker .marker-dot {
       pointer-events: none;
+      cursor: default;
+    }
+    /* User-configured location markers. Rendered as HTML overlay
+       (not SVG) so their dot, halo, and label keep a constant CSS
+       pixel size regardless of the card's rendered width — SVG
+       <text> and circle radii live in viewBox units and shrink
+       linearly with the card, which made labels illegible at any
+       size below full-screen. The marker container itself is
+       positioned in percent (so it tracks the map's drift) but
+       its children are sized in px. */
+    .marker {
+      position: absolute;
+      width: 0;
+      height: 0;
+      pointer-events: none;
+      z-index: 3;
+    }
+    .marker-halo {
+      position: absolute;
+      width: 36px;
+      height: 36px;
+      left: -18px;
+      top: -18px;
+      border-radius: 50%;
+      opacity: 0.22;
+      pointer-events: none;
+      /* Default fill — themes override via --geo-marker-color, and
+         per-marker overrides via inline style still win because the
+         element-level style attribute beats a host-scope variable. */
+      background: var(--geo-marker-color);
+    }
+    .marker-dot {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      left: -7px;
+      top: -7px;
+      border-radius: 50%;
+      border: 1.2px solid rgba(0, 0, 0, 0.7);
+      box-sizing: border-box;
+      pointer-events: auto;
+      cursor: default;
+      transition: transform 120ms ease;
+      background: var(--geo-marker-color);
+    }
+    .marker.is-active .marker-dot {
+      transform: scale(1.3);
+    }
+    .marker-text {
+      position: absolute;
+      top: 9px;
+      left: 0;
+      transform: translateX(-50%);
+      text-align: center;
+      white-space: nowrap;
+      pointer-events: none;
+      font-family: var(--paper-font-headline_-_font-family, system-ui, sans-serif);
+      /* Multi-direction shadow gives a readable outline against
+         either bright daylight or dark city-lights imagery without
+         the cost of a true SVG paint-order stroke. */
+      text-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.95),
+        0 0 3px rgba(0, 0, 0, 0.85),
+        0 0 6px rgba(0, 0, 0, 0.6);
+      color: #fff;
+    }
+    .marker-label {
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.15;
+    }
+    .marker-time {
+      font-size: 12px;
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.02em;
+      line-height: 1.15;
+      margin-top: 1px;
     }
     /* Custom popup. Positioned via inline transform from JS so it
        follows the cursor; ignores its own pointer events so it never
@@ -311,6 +398,17 @@ export class GeoClockCard extends LitElement {
           : undefined,
       centerEntity: config.centerEntity,
       showHomeMarker: config.showHomeMarker ?? false,
+      showHomeMarkerLabel: config.showHomeMarkerLabel ?? false,
+      markers: sanitizeMarkers(config.markers),
+      markerLabelMode:
+        config.markerLabelMode === 'hover' ? 'hover' : 'always',
+      // markerColor stays undefined when the user hasn't explicitly
+      // set it so `--geo-marker-color` is the true default. The
+      // sanitiser drops anything that isn't a recognised CSS color.
+      markerColor: sanitizeCssColor(config.markerColor),
+      markerShowDay: config.markerShowDay ?? true,
+      mainTimeSource: pickMainTimeSource(config.mainTimeSource),
+      mainTimeEntity: config.mainTimeEntity,
       frozenNow,
     };
     // Pin or release the clocks based on the frozen setting.
@@ -435,7 +533,25 @@ export class GeoClockCard extends LitElement {
   }
 
   private maybeLoadIanaTimezones(): void {
-    if (!this.config?.showTimezoneBoundaries || this.tzIanaData !== null) return;
+    if (!this.config || this.tzIanaData !== null) return;
+    // We need IANA data for: (a) the on-map polygon overlay, (b)
+    // resolving tzid for any configured marker, (c) resolving tzid
+    // for `mainTimeSource: 'entity'`, and (d) the home tzid lookup
+    // when HA hasn't reported a `time_zone` config. Skip the fetch
+    // only when none of these apply.
+    const needForMarkers = this.config.markers.length > 0;
+    const needForEntityClock = this.config.mainTimeSource === 'entity';
+    const needForHomeClock =
+      this.config.mainTimeSource === 'home' &&
+      typeof this.hass?.config?.time_zone !== 'string';
+    if (
+      !this.config.showTimezoneBoundaries &&
+      !needForMarkers &&
+      !needForEntityClock &&
+      !needForHomeClock
+    ) {
+      return;
+    }
     const url = this.config.imageryBase + TZ_IANA_DATA;
     loadIanaTimezones(url)
       .then((data) => {
@@ -530,6 +646,96 @@ export class GeoClockCard extends LitElement {
     return { lat, lon };
   }
 
+  /**
+   * Resolve the IANA tzid the main clock readout should use, based on
+   * `mainTimeSource`. Returns undefined to mean "use the browser's
+   * default zone" — that's also the fallback whenever a configured
+   * source can't be resolved (e.g. entity missing, IANA data still
+   * loading).
+   */
+  private resolveMainTimezone(): string | undefined {
+    if (!this.config) return undefined;
+    switch (this.config.mainTimeSource) {
+      case 'device':
+        return undefined;
+      case 'home': {
+        // HA almost always exposes its own zone via config.time_zone,
+        // and using that directly avoids an unnecessary polygon
+        // lookup. Only fall through to the polygon hit-test when the
+        // attribute is missing (rare).
+        const tz = this.hass?.config?.time_zone;
+        if (typeof tz === 'string' && tz) return tz;
+        const home = this.resolveHomeLatLon();
+        if (home && this.tzIanaData) {
+          return (
+            findIanaZoneForLatLon(this.tzIanaData, home.lat, home.lon) ??
+            undefined
+          );
+        }
+        return undefined;
+      }
+      case 'entity': {
+        const id = this.config.mainTimeEntity;
+        const state = id ? this.hass?.states?.[id] : undefined;
+        const lat = state?.attributes?.latitude;
+        const lon = state?.attributes?.longitude;
+        if (
+          typeof lat === 'number' &&
+          typeof lon === 'number' &&
+          this.tzIanaData
+        ) {
+          return (
+            findIanaZoneForLatLon(this.tzIanaData, lat, lon) ?? undefined
+          );
+        }
+        return undefined;
+      }
+    }
+  }
+
+  /**
+   * Walk the configured markers, resolving each one's entity to a
+   * (lat, lon, tzid) triple. Markers whose entity is missing or has
+   * no numeric lat/lon are silently dropped so a stale config doesn't
+   * crash the render. The tzid is null until the IANA dataset has
+   * loaded — in that interim case we still render the dot, just with
+   * no time line.
+   */
+  private resolveMarkers(): ResolvedMarker[] {
+    if (!this.config || this.config.markers.length === 0) return [];
+    const out: ResolvedMarker[] = [];
+    for (const m of this.config.markers) {
+      const state = this.hass?.states?.[m.entity];
+      if (!state) continue;
+      const lat = state.attributes?.latitude;
+      const lon = state.attributes?.longitude;
+      if (typeof lat !== 'number' || typeof lon !== 'number') continue;
+      const friendly =
+        typeof state.attributes?.friendly_name === 'string'
+          ? (state.attributes.friendly_name as string)
+          : m.entity;
+      const label =
+        (typeof m.label === 'string' && m.label.trim()) || friendly;
+      const tzid = this.tzIanaData
+        ? findIanaZoneForLatLon(this.tzIanaData, lat, lon)
+        : null;
+      out.push({
+        entity: m.entity,
+        label,
+        // Per-marker > card-level > undefined (CSS variable wins).
+        // sanitizeCssColor returns undefined for anything that doesn't
+        // match the safe-color regex, so a malicious entry can't slip
+        // a `; url(...)` into the inline style.
+        color:
+          sanitizeCssColor(m.color) ?? this.config.markerColor,
+        lat,
+        lon,
+        tzid,
+      });
+    }
+    return out;
+  }
+
   override render(): TemplateResult {
     if (!this.config) return html``;
 
@@ -587,9 +793,11 @@ export class GeoClockCard extends LitElement {
       this.tzPolygonsCenterLon = centerLon;
     }
 
-    const localTime = formatLocalTime(displayNow);
+    const mainTz = this.resolveMainTimezone();
+    const localTime = formatLocalTime(displayNow, mainTz);
     const utcTime = formatUtcTime(displayNow);
-    const dateStr = formatDate(displayNow);
+    const dateStr = formatDate(displayNow, mainTz);
+    const markers = this.resolveMarkers();
 
     const showBand = this.config.showTimezoneBand;
     const yMin = showBand ? -BAND_H : 0;
@@ -687,10 +895,25 @@ export class GeoClockCard extends LitElement {
               )
             : ''}
 
-          ${this.config.showHomeMarker ? this.renderHomeMarker(centerLon) : ''}
-
           ${showBand ? timezoneBand(mapNow, MAP_W, centerLon) : ''}
         </svg>
+        ${this.config.showHomeMarker
+          ? this.renderHomeMarkerOverlay(
+              displayNow,
+              centerLon,
+              yMin,
+              totalH,
+            )
+          : ''}
+        ${markers.length > 0
+          ? this.renderMarkerOverlay(
+              markers,
+              displayNow,
+              centerLon,
+              yMin,
+              totalH,
+            )
+          : ''}
         <div class="readout">
           <div class="local-time">${localTime}</div>
           ${this.config.showUTC
@@ -788,19 +1011,151 @@ export class GeoClockCard extends LitElement {
     this.hoverPos = { x: e.clientX - r.left, y: e.clientY - r.top };
   }
 
-  /** Render a small marker at the user's HA-configured home location.
-   *  Two SVG circles: a soft halo + a sharp dot, projected via the
-   *  current centerLon so it tracks correctly when the map drifts in
-   *  sun mode. Returns nothing if no home location is available. */
-  private renderHomeMarker(centerLon: number) {
+  /** Render the HA-configured home as an HTML overlay sibling of the
+   *  SVG. Same percentage-positioning trick as renderMarkerOverlay so
+   *  the dot tracks the map's drift, but the dot, halo, and (optional)
+   *  label + time stay at fixed CSS pixel size. The marker color
+   *  comes from the existing `--geo-home-marker` CSS variable rather
+   *  than a per-marker fill, preserving theme support.
+   */
+  private renderHomeMarkerOverlay(
+    displayNow: Date,
+    centerLon: number,
+    yMin: number,
+    totalH: number,
+  ): TemplateResult | string {
     const home = this.resolveHomeLatLon();
     if (!home) return '';
+    if (!this.config) return '';
     const { x, y } = latLonToPx(home.lat, home.lon, MAP_W, MAP_H, centerLon);
-    return svg`
-      <circle class="home-marker-halo" cx="${x}" cy="${y}" r="22"/>
-      <circle class="home-marker-dot"  cx="${x}" cy="${y}" r="7"/>
+    const leftPct = (x / MAP_W) * 100;
+    const topPct = ((y - yMin) / totalH) * 100;
+    const showLabel = this.config.showHomeMarkerLabel;
+    const tz = this.resolveHomeTimezone();
+    const label =
+      this.hass?.config?.location_name &&
+      typeof this.hass.config.location_name === 'string'
+        ? this.hass.config.location_name
+        : 'Home';
+    const time = tz
+      ? formatMarkerTime(displayNow, tz, this.config.markerShowDay)
+      : '';
+    return html`
+      <div
+        class="marker home-marker"
+        style="left: ${leftPct}%; top: ${topPct}%;"
+      >
+        <div class="marker-halo"></div>
+        <div class="marker-dot"></div>
+        ${showLabel
+          ? html`
+              <div class="marker-text">
+                <div class="marker-label">${label}</div>
+                ${time
+                  ? html`<div class="marker-time">${time}</div>`
+                  : ''}
+              </div>
+            `
+          : ''}
+      </div>
     `;
   }
+
+  /** Resolve the IANA tzid the HOME marker should use for its time
+   *  display — same logic as the home branch of resolveMainTimezone
+   *  but pulled out so the home marker can compute its time
+   *  independently of `mainTimeSource`. */
+  private resolveHomeTimezone(): string | undefined {
+    const tz = this.hass?.config?.time_zone;
+    if (typeof tz === 'string' && tz) return tz;
+    const home = this.resolveHomeLatLon();
+    if (home && this.tzIanaData) {
+      return (
+        findIanaZoneForLatLon(this.tzIanaData, home.lat, home.lon) ??
+        undefined
+      );
+    }
+    return undefined;
+  }
+
+  /**
+   * Render every configured marker as an HTML overlay sibling of the
+   * SVG. We project the marker to viewBox pixel coords via
+   * latLonToPx, then express the result as percentages of the
+   * frame's total width/height so the overlay tracks the map as it
+   * resizes — but the dot, halo, and label text are sized in CSS
+   * pixels and stay legible at any card width. Hover hit-testing is
+   * on the dot itself (the only child with pointer-events: auto),
+   * matching the SVG behavior we replaced.
+   */
+  private renderMarkerOverlay(
+    markers: ResolvedMarker[],
+    displayNow: Date,
+    centerLon: number,
+    yMin: number,
+    totalH: number,
+  ) {
+    if (!this.config) return '';
+    const mode = this.config.markerLabelMode;
+    return markers.map((m) => {
+      const { x, y } = latLonToPx(m.lat, m.lon, MAP_W, MAP_H, centerLon);
+      const leftPct = (x / MAP_W) * 100;
+      const topPct = ((y - yMin) / totalH) * 100;
+      const time = m.tzid
+        ? formatMarkerTime(displayNow, m.tzid, this.config!.markerShowDay)
+        : '';
+      const isActive = this.hoveredMarker?.entity === m.entity;
+      // When color is undefined we deliberately omit the inline
+      // background so the `.marker-halo` / `.marker-dot` CSS rules
+      // can fall through to var(--geo-marker-color) — that's the
+      // theme-override path for users who'd rather restyle than
+      // configure each card.
+      const fillStyle = m.color ? `background: ${m.color};` : '';
+      return html`
+        <div
+          class="marker${isActive ? ' is-active' : ''}"
+          style="left: ${leftPct}%; top: ${topPct}%;"
+        >
+          <div class="marker-halo" style=${fillStyle}></div>
+          <div
+            class="marker-dot"
+            style=${fillStyle}
+            @pointerenter=${(e: PointerEvent) => this.onMarkerEnter(e, m)}
+            @pointermove=${this.onZoneMove}
+            @pointerleave=${this.onMarkerLeave}
+          ></div>
+          ${mode === 'always'
+            ? html`
+                <div class="marker-text">
+                  <div class="marker-label">${m.label}</div>
+                  ${time
+                    ? html`<div class="marker-time">${time}</div>`
+                    : ''}
+                </div>
+              `
+            : ''}
+        </div>
+      `;
+    });
+  }
+
+  private onMarkerEnter = (e: PointerEvent, m: ResolvedMarker): void => {
+    this.clearDismissTimer();
+    this.hoveredMarker = m;
+    this.updateHoverPos(e);
+  };
+
+  private onMarkerLeave = (e: PointerEvent): void => {
+    if (e.pointerType === 'touch') {
+      this.scheduleTouchDismiss(() => {
+        this.hoveredMarker = null;
+        if (!this.hoveredIana && !this.hoveredOffset) this.hoverPos = null;
+      });
+      return;
+    }
+    this.hoveredMarker = null;
+    if (!this.hoveredIana && !this.hoveredOffset) this.hoverPos = null;
+  };
 
   private renderPopup(displayNow: Date): TemplateResult {
     if (!this.hoverPos) return html``;
@@ -826,6 +1181,29 @@ export class GeoClockCard extends LitElement {
       `transform: translate(${this.hoverPos.x + popupOffsetX}px, ` +
       `${this.hoverPos.y + popupOffsetY}px)${yShift};`;
 
+    // Marker hover takes priority over both TZ layers — the user
+    // explicitly placed the marker, so its label is the more
+    // informative thing to show.
+    if (this.hoveredMarker) {
+      const m = this.hoveredMarker;
+      if (m.tzid) {
+        const live = zoneNow(displayNow, m.tzid);
+        return html`
+          <div class="tz-popup" style=${style}>
+            <div class="tz-popup-time">${live.time}</div>
+            <div class="tz-popup-date">${live.date}</div>
+            <div class="tz-popup-name">${m.label}</div>
+            <div class="tz-popup-offset">${live.offset} · ${m.tzid}</div>
+          </div>
+        `;
+      }
+      return html`
+        <div class="tz-popup" style=${style}>
+          <div class="tz-popup-name">${m.label}</div>
+          <div class="tz-popup-offset">${m.entity}</div>
+        </div>
+      `;
+    }
     // IANA hover takes priority — it's DST-aware and represents an
     // actual jurisdiction. Fall back to the offset overlay when the
     // cursor is over open ocean / Antarctica strips with no IANA
@@ -955,12 +1333,47 @@ function sanitizeCssColor(input: string | undefined): string | undefined {
   return undefined;
 }
 
-function formatLocalTime(d: Date): string {
+/**
+ * Marker time format, tailored for the on-map label.
+ *
+ * Time format is locale-aware ("12:22 PM" en-US / "12:22" en-GB) and
+ * we deliberately drop seconds — markers update every map tick
+ * (usually 10 s) so a second hand jitters distractingly.
+ *
+ * When `withDay` is true we append the weekday ("12:22 PM Friday")
+ * so a marker on the far side of the planet whose date has rolled
+ * over is obvious at a glance next to your home's "9:22 PM Friday".
+ * We use two separate Intl formatters and concatenate manually rather
+ * than letting `Intl.DateTimeFormat` interleave the parts itself —
+ * Intl puts the weekday first in most locales ("Friday, 12:22 PM"),
+ * and on a marker label readers want to scan time first, day second.
+ */
+function formatMarkerTime(d: Date, tz: string | undefined, withDay: boolean): string {
+  const opts: Intl.DateTimeFormatOptions = {
+    hour: 'numeric',
+    minute: '2-digit',
+    ...(tz ? { timeZone: tz } : {}),
+  };
+  const time = new Intl.DateTimeFormat(undefined, opts).format(d);
+  if (!withDay) return time;
+  const dayOpts: Intl.DateTimeFormatOptions = {
+    weekday: 'long',
+    ...(tz ? { timeZone: tz } : {}),
+  };
+  const day = new Intl.DateTimeFormat(undefined, dayOpts).format(d);
+  return `${time} ${day}`;
+}
+
+function formatLocalTime(d: Date, tz?: string): string {
+  // When a tz is supplied, the readout shows that zone's wall time
+  // (DST-aware via Intl). Without one we fall through to the
+  // browser's default zone — Pre-0.2.0 behavior.
   return d.toLocaleTimeString(undefined, {
     hour: 'numeric',
     minute: '2-digit',
     second: '2-digit',
     timeZoneName: 'short',
+    ...(tz ? { timeZone: tz } : {}),
   });
 }
 
@@ -971,13 +1384,61 @@ function formatUtcTime(d: Date): string {
   return `${hh}:${mm}:${ss} UTC`;
 }
 
-function formatDate(d: Date): string {
+function formatDate(d: Date, tz?: string): string {
   return d.toLocaleDateString(undefined, {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    ...(tz ? { timeZone: tz } : {}),
   });
+}
+
+/** A marker after we've resolved its entity to live coordinates +
+ *  timezone. `tzid` may be null when the IANA dataset hasn't loaded
+ *  yet — the marker still renders, just without a time line. `color`
+ *  is undefined when neither the per-marker nor card-level default
+ *  is set; the renderer skips the inline `style` so the
+ *  `--geo-marker-color` CSS variable wins. */
+interface ResolvedMarker {
+  entity: string;
+  label: string;
+  color: string | undefined;
+  lat: number;
+  lon: number;
+  tzid: string | null;
+}
+
+/** Trim and validate the raw marker config. Drops entries with no
+ *  entity ID; otherwise leaves `label`/`color` as-is for the
+ *  resolveMarkers() step to combine with the entity's friendly_name
+ *  and the card-level default color. */
+function sanitizeMarkers(
+  input: GeoClockCardConfig['markers'],
+): MarkerConfig[] {
+  if (!Array.isArray(input)) return [];
+  const out: MarkerConfig[] = [];
+  for (const raw of input) {
+    if (!raw || typeof raw.entity !== 'string') continue;
+    const entity = raw.entity.trim();
+    if (!entity) continue;
+    out.push({
+      entity,
+      label:
+        typeof raw.label === 'string' && raw.label.trim() !== ''
+          ? raw.label
+          : undefined,
+      color: typeof raw.color === 'string' ? raw.color : undefined,
+    });
+  }
+  return out;
+}
+
+function pickMainTimeSource(
+  input: GeoClockCardConfig['mainTimeSource'],
+): 'home' | 'device' | 'entity' {
+  if (input === 'device' || input === 'entity') return input;
+  return 'home';
 }
 
 window.customCards = window.customCards || [];

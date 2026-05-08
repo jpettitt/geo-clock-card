@@ -41,8 +41,27 @@ the planet.
   hemisphere stays in the middle and the map slowly drifts),
   `home` (your HA-configured longitude), `longitude` (any numeric
   value), or `entity` (follow a zone / person / device-tracker entity).
+  All non-`sun` modes fall back to **Greenwich (lon=0°)** with a
+  console warning when their data isn't available — so a misconfigured
+  mode looks visibly different from `sun` instead of silently behaving
+  the same.
 - **Home marker** — optional dot at your HA-configured location that
-  tracks the map's drift.
+  tracks the map's drift, with an opt-in label + current local time
+  beneath it.
+- **Location markers** — pin any list of HA entities (zones, persons,
+  device-trackers) on the map; each shows the entity's label and the
+  current local time at that zone (DST-aware, looked up from its
+  longitude/latitude). Labels are always-visible by default; flip to
+  hover-only if you'd rather keep the map tidy. The weekday is
+  appended to the time so a marker on the far side of the planet
+  whose date has rolled over is obvious at a glance — toggle off if
+  you want time-only. Per-marker color, or a card-wide default that
+  themes can override via `--geo-marker-color`.
+- **Main-clock time source** — the wall-clock readout can read from
+  your HA location (default), the viewing device, or any HA entity
+  with a longitude/latitude. *(Breaking change in v0.2.0: pre-0.2.0
+  cards behaved as if the source was the viewing device. Set
+  `mainTimeSource: device` to keep the old behavior.)*
 - **Time scrubbing** — freeze the clock at any UTC moment via `now: …`
   for screenshots or to preview the look at, say, the December solstice.
 - **Visual editor** — opens automatically when adding the card; advanced
@@ -116,6 +135,7 @@ center: sun
 centerLongitude: -119       # required when center: longitude. -180..180.
 centerEntity: zone.home     # required when center: entity. Must expose a longitude attribute.
 showHomeMarker: false       # render a dot at hass.config.latitude/longitude
+showHomeMarkerLabel: false  # also show home name + current local time under the dot
 
 # Imagery + atmosphere (under "Advanced visual settings" in the editor)
 dayBrightness: 1.15         # CSS brightness() on the day layer (0.5..2.0)
@@ -131,6 +151,25 @@ updateInterval: 1           # seconds between clock-readout ticks (1..600).
                             # both drop to 30 minutes when the card is off-screen.
 now: "2024-12-21T09:21:00Z" # freeze the clock at this moment (omit for live)
 
+# Main-clock time source — home (default) | device | entity
+# - 'home'   reads hass.config.time_zone (the HA-configured zone)
+# - 'device' uses the viewing browser's zone (pre-0.2.0 behavior)
+# - 'entity' picks the IANA zone of an HA entity's lat/lon
+mainTimeSource: home
+mainTimeEntity: zone.work   # required when mainTimeSource: entity
+
+# Location markers — list of HA entities to pin on the map.
+# Each entity must expose numeric `latitude` and `longitude` attributes.
+markers:
+  - entity: zone.work
+    label: Office            # optional — defaults to the entity's friendly_name
+    color: "#3da9fc"         # optional — defaults to markerColor
+  - entity: person.alice
+markerLabelMode: always     # always | hover
+markerColor: "#3da9fc"      # default fill for markers without their own color
+                            # — omit (or unset) to let `--geo-marker-color` win
+markerShowDay: true         # append weekday after the time (e.g. "12:22 PM Friday")
+
 # Overlays
 showTimezoneBand: true      # hour-of-day numbers across the top
 showTimezoneBoundaries: true # 15° offset rectangle bands + IANA polygons
@@ -145,12 +184,17 @@ imageryBase: ""             # override the assets URL (e.g. host on a CDN)
 
 - **`sun`** (default) — centered on the current subsolar longitude. The map
   drifts westward as the sun moves; the daylit hemisphere stays in the middle.
-- **`home`** — centered on `hass.config.longitude`. Falls back to `sun` if HA
-  hasn't reported a location.
-- **`longitude`** — centered on a numeric `centerLongitude` value.
+- **`home`** — centered on `hass.config.longitude`. Falls back to **Greenwich
+  (0°)** with a `console.warn` if HA hasn't reported a longitude.
+- **`longitude`** — centered on a numeric `centerLongitude` value. Falls back
+  to **Greenwich (0°)** if the value is missing or non-numeric.
 - **`entity`** — centered on the longitude attribute of an HA entity. Works
   with `zone.*`, `person.*`, and most `device_tracker.*` entities. Falls back
-  to `sun` if the entity is missing or has no longitude.
+  to **Greenwich (0°)** if the entity is missing or has no numeric longitude.
+
+The Greenwich fallback is deliberate — it's visually distinct from `sun`
+mode so a misconfiguration doesn't silently look right. Watch the browser
+console for a one-off warn line that names the broken field.
 
 ### Theme via CSS variables
 
@@ -169,6 +213,7 @@ geo-clock-card:
   --geo-tz-mid: "#6ab0ff"
   --geo-tz-line: rgba(255, 255, 255, 0.18)
   --geo-home-marker: var(--accent-color, "#ff7a3d")
+  --geo-marker-color: "#3da9fc"
 ```
 
 Most of these have a matching named config option (e.g. `dayBrightness`
@@ -210,7 +255,7 @@ center mode, time-scrubbing with solstice/equinox presets, etc.
 - [`src/timezone-band.ts`](src/timezone-band.ts) — top-of-map hour band + tick lines.
 - [`src/day-image.ts`](src/day-image.ts) — picks the right monthly daylight image for a given date.
 - [`src/geo-clock-card.ts`](src/geo-clock-card.ts) — the Lit element that wires it all together.
-- [`src/geo-clock-card-editor.ts`](src/geo-clock-card-editor.ts) — visual config editor (HA `ha-textfield` / `ha-select` / `ha-formfield` / `ha-switch` / `ha-entity-picker` / `ha-expansion-panel`); lazy-loaded by the card via `getConfigElement()` and bundled inline.
+- [`src/geo-clock-card-editor.ts`](src/geo-clock-card-editor.ts) — visual config editor (HA `ha-textfield` / `ha-switch` / `ha-formfield` / `ha-selector` / `ha-expansion-panel`, plus native `<select>` for the centering / time-source / marker-mode dropdowns where `ha-select` was unreliable). Awaits `loadCardHelpers()` before rendering so the entity selectors register correctly. Lazy-loaded by the card via `getConfigElement()` and bundled inline.
 
 The original design notes are in [`DESIGN.md`](DESIGN.md).
 

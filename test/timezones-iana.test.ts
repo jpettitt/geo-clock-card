@@ -3,6 +3,7 @@ import {
   ianaToPolygons,
   cityFromTzid,
   zoneNow,
+  findIanaZoneForLatLon,
 } from '../src/timezones-iana.js';
 
 const W = 360;
@@ -48,6 +49,57 @@ describe('ianaToPolygons', () => {
     expect(out[0].cityLabel).toBe('New York');
     expect(out[0].d.startsWith('M')).toBe(true);
     expect(out[0].d.endsWith('Z')).toBe(true);
+  });
+});
+
+describe('findIanaZoneForLatLon', () => {
+  // Two non-overlapping rectangles: one over the eastern Pacific (NY-ish
+  // longitudes are too cluttered to mock cleanly) and one over a chunk
+  // of central Africa. The point-in-polygon test only cares that the
+  // shapes don't overlap and that the input falls inside one of them.
+  const data = fc([
+    polygon(
+      [
+        [
+          [-90, 25],
+          [-70, 25],
+          [-70, 45],
+          [-90, 45],
+          [-90, 25],
+        ],
+      ],
+      'Test/Atlantic',
+    ),
+    polygon(
+      [
+        [
+          [10, -10],
+          [40, -10],
+          [40, 10],
+          [10, 10],
+          [10, -10],
+        ],
+      ],
+      'Test/Africa',
+    ),
+  ]);
+
+  it('returns the tzid of the polygon containing the point', () => {
+    expect(findIanaZoneForLatLon(data, 35, -80)).toBe('Test/Atlantic');
+    expect(findIanaZoneForLatLon(data, 0, 25)).toBe('Test/Africa');
+  });
+
+  it('returns null when the point is outside every polygon', () => {
+    expect(findIanaZoneForLatLon(data, 60, 60)).toBeNull();
+    expect(findIanaZoneForLatLon(data, -50, -50)).toBeNull();
+  });
+
+  it('rejects non-finite lat/lon inputs without scanning the dataset', () => {
+    expect(findIanaZoneForLatLon(data, NaN, 0)).toBeNull();
+    expect(findIanaZoneForLatLon(data, 0, Infinity)).toBeNull();
+    expect(
+      findIanaZoneForLatLon(data, undefined as unknown as number, 0),
+    ).toBeNull();
   });
 });
 

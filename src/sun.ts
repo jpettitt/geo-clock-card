@@ -49,6 +49,14 @@ export function subsolarPoint(date: Date): SubsolarPoint {
   return { lat: declination, lon };
 }
 
+/**
+ * Solar elevation (degrees above the horizon) at a given (lat, lon)
+ * for a given subsolar point. Currently only consumed by the test
+ * suite, where it's used as ground truth: a vertex on the terminator
+ * polygon must produce a sun-elevation of ~0°. Exported (rather than
+ * inlined into the test) to keep the surface area of `sun.ts` honest
+ * — the trig is a public, testable formula, not test scaffolding.
+ */
 export function sunElevation(
   lat: number,
   lon: number,

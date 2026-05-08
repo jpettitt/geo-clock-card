@@ -9,8 +9,8 @@
 - [x] Lit element with SVG mask + feathered terminator
 - [x] Local time + UTC + date readout
 - [x] NASA Blue/Black Marble fetch script
-- [ ] First in-Home-Assistant test (pending user verification)
-- [ ] HACS metadata polish + first tagged release
+- [x] First in-Home-Assistant test
+- [x] HACS metadata polish + first tagged release (v0.1.x shipped, v0.2.0 in flight)
 
 ## Stage 2 — time-zone affordances
 
@@ -24,12 +24,13 @@
 
 ## Stage 3 — decisions deferred to here
 
-- [ ] Monthly Blue Marble variant (auto-pick by current month)
+- [x] Monthly Blue Marble variant (auto-pick by current month) — 24 frames (start + mid each month) shipped via day-image.ts
 - [ ] Better terminator: WebGL/canvas with sun-elevation alpha + tinted twilight
-- [ ] Bundling strategy: ship imagery in HACS package vs. fetch on first load vs. CDN
-- [ ] Optional: location pins (config + HA zones)
+- [x] Bundling strategy: imagery ships alongside the JS bundle in dist/, copied by HACS / manual install
+- [x] Location pins (config + HA zones) — `markers:` array with per-marker label + color, always-visible or hover label modes
+- [x] Configurable main-clock time source (home/device/entity, default `home`) — **breaking change** in 0.2.0: pre-0.2.0 cards behaved like `device`
 - [ ] Optional: alternate projection (Mercator)
-- [ ] Optional: Lovelace visual config editor
+- [x] Lovelace visual config editor
 
 ## Quality / housekeeping (ongoing)
 

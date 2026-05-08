@@ -1,6 +1,68 @@
 // Card config schema.
+//
+// Public types and the minimal HA shape we lean on. We don't import
+// `custom-card-helpers` so the runtime bundle stays dependency-free —
+// instead, `HassLike` declares the strict subset of `HomeAssistant`
+// the card and editor actually read at runtime. If you need
+// fields that are not here, extend this interface; do not cast away
+// the type.
 
 export type CenterMode = 'sun' | 'home' | 'longitude' | 'entity';
+
+/**
+ * Minimal subset of Home Assistant's `hass` object used by both the
+ * card and the editor. The real type is much wider — see
+ * `home-assistant-js-websocket` / `custom-card-helpers` — but every
+ * field below has an actual reader in this package, and adding
+ * unused fields here would be lying about our coupling.
+ */
+export interface HassLike {
+  config?: {
+    /** Numeric latitude of the home zone. */
+    latitude?: number;
+    /** Numeric longitude of the home zone. */
+    longitude?: number;
+    /** IANA tzid of the home zone, e.g. `America/Los_Angeles`.
+     *  Used by the home main-clock and home marker time. */
+    time_zone?: string;
+    /** User-set name of the installation, falls back to `Home`. */
+    location_name?: string;
+  };
+  /** Live entity state map, keyed by entity_id. We only read
+   *  `attributes.{latitude,longitude,friendly_name}` for marker
+   *  resolution — the editor passes `hass` opaquely to
+   *  `<ha-selector>`, which uses everything itself. */
+  states?: Record<string, { attributes?: Record<string, unknown> }>;
+}
+
+/** Where the main clock readout draws its time from.
+ *  - 'home' (default since 0.2.0): the IANA zone at the HA-configured
+ *    location. Reads `hass.config.time_zone` directly when present,
+ *    otherwise falls back to a polygon hit-test on the home lat/lon.
+ *  - 'device': the browser's local timezone (pre-0.2.0 behavior).
+ *  - 'entity': the IANA zone of the entity named in `mainTimeEntity`. */
+export type MainTimeSource = 'home' | 'device' | 'entity';
+
+/** Visibility mode for the marker label + time text.
+ *  - 'always': render under each marker dot, all the time.
+ *  - 'hover': only show in a popup on hover/tap. */
+export type MarkerLabelMode = 'always' | 'hover';
+
+/** A single map marker — the time at the entity's location is computed
+ *  from its `latitude`/`longitude` attributes. */
+export interface MarkerConfig {
+  /** HA entity ID, e.g. `zone.work`, `person.alice`,
+   *  `device_tracker.kid_phone`. Must expose numeric `latitude` and
+   *  `longitude` attributes. */
+  entity: string;
+  /** Override the entity's friendly name on the marker. */
+  label?: string;
+  /** Optional dot color for this marker. Any CSS color string the
+   *  card's `sanitizeCssColor` accepts (hex / rgb[a] / hsl[a] /
+   *  named). Falls back to the card-level `markerColor`, then to
+   *  the `--geo-marker-color` CSS variable. */
+  color?: string;
+}
 
 export interface GeoClockCardConfig {
   type: string;
@@ -21,6 +83,10 @@ export interface GeoClockCardConfig {
   /** Render a small marker at the user's home location (always taken
    *  from `hass.config.latitude/longitude`). Default false. */
   showHomeMarker?: boolean;
+  /** When the home marker is shown, also render the home name + the
+   *  current local time at the HA-configured zone underneath it.
+   *  Default false. Ignored when `showHomeMarker` is false. */
+  showHomeMarkerLabel?: boolean;
   /** Freeze the clock at a specific moment (ISO 8601 string, ms epoch
    *  number, or Date). When set, the card stops ticking and displays
    *  this exact time — useful for previewing equinoxes / solstices /
@@ -63,6 +129,25 @@ export interface GeoClockCardConfig {
    *  Defaults to the bundle's own location. (Not exposed in the
    *  visual editor.) */
   imageryBase?: string;
+  /** List of additional location markers. Each entity must expose
+   *  numeric `latitude` + `longitude` attributes. Default: empty. */
+  markers?: MarkerConfig[];
+  /** How marker labels + times are shown. Default 'always'. */
+  markerLabelMode?: MarkerLabelMode;
+  /** Default fill color for markers that don't override `color`.
+   *  Any CSS color string. Default '#3da9fc'. */
+  markerColor?: string;
+  /** Append the weekday (locale-aware) after each marker's time
+   *  display — e.g. `12:22 PM Friday`. Helpful when markers in
+   *  far-away zones have rolled over to a different calendar day.
+   *  Default true. */
+  markerShowDay?: boolean;
+  /** Source for the main clock readout. Default 'home' (BREAKING from
+   *  pre-0.2.0, where the readout was always device local). */
+  mainTimeSource?: MainTimeSource;
+  /** Used when `mainTimeSource: 'entity'`. Entity ID with
+   *  `latitude`/`longitude` attributes. */
+  mainTimeEntity?: string;
 }
 
 export interface ResolvedConfig {
@@ -82,6 +167,16 @@ export interface ResolvedConfig {
   centerLongitude?: number;
   centerEntity?: string;
   showHomeMarker: boolean;
+  showHomeMarkerLabel: boolean;
+  markers: MarkerConfig[];
+  markerLabelMode: MarkerLabelMode;
+  /** Card-level default marker color. `undefined` means "let the
+   *  `--geo-marker-color` CSS variable decide" so HA themes can
+   *  restyle without touching card config. */
+  markerColor: string | undefined;
+  markerShowDay: boolean;
+  mainTimeSource: MainTimeSource;
+  mainTimeEntity?: string;
   /** When set, the clock is frozen at this Date and the timer is disabled. */
   frozenNow?: Date;
 }
