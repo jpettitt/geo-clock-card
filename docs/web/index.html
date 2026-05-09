@@ -113,19 +113,23 @@
       outline-offset: 2px;
     }
     .fs-btn svg { width: 18px; height: 18px; }
-    /* Hide the "exit" glyph by default, swap when fullscreen. */
+    /* Hide the "exit" glyph by default; swap to it when ANY
+       fullscreen mode is active — native :fullscreen, the WebKit
+       prefix variant, or our pseudo-fullscreen body class. */
     .fs-btn .icon-exit { display: none; }
     .stage:fullscreen .fs-btn .icon-enter,
-    .stage:-webkit-full-screen .fs-btn .icon-enter { display: none; }
+    .stage:-webkit-full-screen .fs-btn .icon-enter,
+    body.pseudo-fs .fs-btn .icon-enter { display: none; }
     .stage:fullscreen .fs-btn .icon-exit,
-    .stage:-webkit-full-screen .fs-btn .icon-exit { display: block; }
+    .stage:-webkit-full-screen .fs-btn .icon-exit,
+    body.pseudo-fs .fs-btn .icon-exit { display: block; }
 
-    /* In fullscreen, .stage is sized by the browser to 100vw × 100vh.
-       Drop the aspect-ratio so it doesn't fight the browser sizing,
-       and flex-center the card. The card keeps its own internal
-       aspect-ratio so it letterboxes inside the screen as needed —
-       on a 16:9 monitor that means a thin black bar above + below
-       the 1.917:1 map; on ultrawide the SVG's
+    /* Native fullscreen path: .stage is sized by the browser to
+       100vw × 100vh, so we drop our own aspect-ratio (otherwise it
+       fights the browser) and flex-center the card. The card keeps
+       its own internal aspect-ratio so it letterboxes inside the
+       screen as needed — on a 16:9 monitor that means a thin black
+       bar above + below the 1.917:1 map; on ultrawide the SVG's
        preserveAspectRatio="xMidYMid slice" crops the sides. */
     .stage:fullscreen,
     .stage:-webkit-full-screen {
@@ -136,6 +140,32 @@
     }
     .stage:fullscreen geo-clock-card,
     .stage:-webkit-full-screen geo-clock-card {
+      width: 100%;
+    }
+
+    /* Pseudo-fullscreen for iOS Safari and any other browser that
+       refuses Element.requestFullscreen() on non-video elements. We
+       hide the page chrome and pin .stage to the viewport with
+       position: fixed. The browser's URL bar still shows (no API
+       can hide it from a regular web page), but the map fills
+       everything else — close enough to "wall display" mode for
+       kiosk use on iPad / iPhone. */
+    body.pseudo-fs > header,
+    body.pseudo-fs > main {
+      display: none;
+    }
+    body.pseudo-fs > .stage {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      aspect-ratio: auto;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    body.pseudo-fs > .stage geo-clock-card {
       width: 100%;
     }
 
@@ -234,7 +264,7 @@
     // — i.e. the directory containing the loaded JS bundle — so once
     // the import resolves, every imagery + GeoJSON fetch lands on the
     // same versioned prefix. No manual imageryBase needed.
-    const ASSET_BASE = '/v0.2.0';
+    const ASSET_BASE = '/v0.2.1';
 
     const stage = document.getElementById('stage');
 
@@ -258,21 +288,67 @@
 
     // Fullscreen toggle. We target .stage (not document.documentElement)
     // so only the map fills the screen, not the page chrome — that's
-    // the kiosk / wall-display use case. The :fullscreen CSS rules
-    // above swap aspect-ratio + center the card.
+    // the kiosk / wall-display use case.
+    //
+    // iOS Safari refuses Element.requestFullscreen() on anything but
+    // <video> tags — both the standard and the webkit-prefixed
+    // variants are undefined on the stage, so calling .call() on the
+    // OR chain throws. We catch that (and any other rejection from
+    // browsers that just say no) and fall back to a body-class-based
+    // pseudo-fullscreen: page chrome hidden, .stage pinned to the
+    // viewport via CSS. The button stays visible so the user can
+    // tap to exit.
+    function nativeFullscreenElement() {
+      return document.fullscreenElement ||
+             document.webkitFullscreenElement ||
+             null;
+    }
+    function inAnyFullscreen() {
+      return !!nativeFullscreenElement() ||
+             document.body.classList.contains('pseudo-fs');
+    }
+    function enterPseudoFullscreen() {
+      document.body.classList.add('pseudo-fs');
+    }
+    function exitPseudoFullscreen() {
+      document.body.classList.remove('pseudo-fs');
+    }
+    function enterFullscreen() {
+      const req = stage.requestFullscreen || stage.webkitRequestFullscreen;
+      if (typeof req === 'function') {
+        // requestFullscreen returns a Promise that rejects on iOS
+        // Safari (and on the rare Android browser that's locked it
+        // down). Treat any rejection as "fall back to CSS".
+        try {
+          const p = req.call(stage);
+          if (p && typeof p.then === 'function') {
+            p.catch(enterPseudoFullscreen);
+          }
+          return;
+        } catch (err) {
+          // sync throw — same fallback path
+        }
+      }
+      enterPseudoFullscreen();
+    }
+    function exitFullscreen() {
+      if (nativeFullscreenElement()) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (typeof exit === 'function') exit.call(document);
+      }
+      exitPseudoFullscreen();
+    }
     document.getElementById('fs-btn').addEventListener('click', () => {
-      const isFs =
-        document.fullscreenElement ||
-        // @ts-ignore — Safari prefix
-        document.webkitFullscreenElement;
-      if (isFs) {
-        (document.exitFullscreen ||
-         // @ts-ignore — Safari prefix
-         document.webkitExitFullscreen).call(document);
-      } else {
-        (stage.requestFullscreen ||
-         // @ts-ignore — Safari prefix
-         stage.webkitRequestFullscreen).call(stage);
+      if (inAnyFullscreen()) exitFullscreen();
+      else enterFullscreen();
+    });
+    // Esc to leave pseudo-fullscreen on desktops without a native
+    // session for the browser to escape from. (Native fullscreen
+    // already handles Esc itself.)
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' &&
+          document.body.classList.contains('pseudo-fs')) {
+        exitPseudoFullscreen();
       }
     });
   </script>

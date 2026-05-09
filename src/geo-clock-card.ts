@@ -960,36 +960,46 @@ export class GeoClockCard extends LitElement {
     this.clearDismissTimer();
     this.hoveredIana = p;
     this.updateHoverPos(e);
+    if (e.pointerType === 'touch') this.armTouchAutoDismiss();
   };
 
   private onIanaLeave = (e: PointerEvent): void => {
     if (e.pointerType === 'touch') {
       this.scheduleTouchDismiss(() => {
         this.hoveredIana = null;
-        if (!this.hoveredOffset) this.hoverPos = null;
+        if (!this.hoveredOffset && !this.hoveredMarker) {
+          this.hoverPos = null;
+        }
       });
       return;
     }
     this.hoveredIana = null;
-    if (!this.hoveredOffset) this.hoverPos = null;
+    if (!this.hoveredOffset && !this.hoveredMarker) {
+      this.hoverPos = null;
+    }
   };
 
   private onOffsetEnter = (e: PointerEvent, p: TzPolygon): void => {
     this.clearDismissTimer();
     this.hoveredOffset = p;
     this.updateHoverPos(e);
+    if (e.pointerType === 'touch') this.armTouchAutoDismiss();
   };
 
   private onOffsetLeave = (e: PointerEvent): void => {
     if (e.pointerType === 'touch') {
       this.scheduleTouchDismiss(() => {
         this.hoveredOffset = null;
-        if (!this.hoveredIana) this.hoverPos = null;
+        if (!this.hoveredIana && !this.hoveredMarker) {
+          this.hoverPos = null;
+        }
       });
       return;
     }
     this.hoveredOffset = null;
-    if (!this.hoveredIana) this.hoverPos = null;
+    if (!this.hoveredIana && !this.hoveredMarker) {
+      this.hoverPos = null;
+    }
   };
 
   private onZoneMove = (e: PointerEvent): void => {
@@ -1143,6 +1153,7 @@ export class GeoClockCard extends LitElement {
     this.clearDismissTimer();
     this.hoveredMarker = m;
     this.updateHoverPos(e);
+    if (e.pointerType === 'touch') this.armTouchAutoDismiss();
   };
 
   private onMarkerLeave = (e: PointerEvent): void => {
@@ -1156,6 +1167,28 @@ export class GeoClockCard extends LitElement {
     this.hoveredMarker = null;
     if (!this.hoveredIana && !this.hoveredOffset) this.hoverPos = null;
   };
+
+  /**
+   * Schedule a blanket popup-dismissal after TOUCH_DISMISS_MS. iOS
+   * Safari (and several Android browsers) don't fire pointerleave
+   * on tap-and-release, so the existing leave-handler dismissal
+   * never runs on mobile and a popup gets stuck on-screen until
+   * the user taps another region. Calling this on pointerenter
+   * with pointerType 'touch' guarantees the popup will clear after
+   * a readable interval regardless of whether leave ever fires.
+   *
+   * Tapping a different region calls clearDismissTimer via the next
+   * onIanaEnter / onOffsetEnter / onMarkerEnter, so the new popup
+   * gets its own fresh timer and the old one is cancelled.
+   */
+  private armTouchAutoDismiss(): void {
+    this.scheduleTouchDismiss(() => {
+      this.hoveredIana = null;
+      this.hoveredOffset = null;
+      this.hoveredMarker = null;
+      this.hoverPos = null;
+    });
+  }
 
   private renderPopup(displayNow: Date): TemplateResult {
     if (!this.hoverPos) return html``;
