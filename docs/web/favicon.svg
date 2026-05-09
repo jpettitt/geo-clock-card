@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- geoclock.world favicon. Two-tone globe split by a tilted
+       terminator (≈Earth's axial tilt of 23.4°), echoing the day
+       (warm) / night (cool) hemispheres of the actual card.
+       Night is deep ocean blue rather than the page bg color so
+       the globe stays distinct on any background — a #0c1118 night
+       half disappeared on dark home screens and dark browser tabs.
+       Designed to stay legible at 16×16 — no detail finer than a
+       single pixel at that scale. -->
+  <circle cx="32" cy="32" r="30" fill="#1a3a5e"/>
+  <g transform="rotate(-23 32 32)">
+    <path d="M 32 2 A 30 30 0 0 0 32 62 Z" fill="#ff7a3d"/>
+  </g>
+</svg>
