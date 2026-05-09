@@ -48,7 +48,16 @@ export function buildHourCells(
     let offset = realLon / 15;
     while (offset > 12) offset -= 24;
     while (offset <= -12) offset += 24;
-    const local24 = ((((utcH + realLon / 15) % 24) + 24) % 24) | 0;
+    // Round (not floor) so a column whose true local time is a few
+    // minutes either side of a whole hour displays the closest hour.
+    // Floor truncation here was visibly wrong in sun-centered mode:
+    // because of the equation of time, the subsolar longitude is
+    // fractional (typically ±1°), and the cell at the center column
+    // computed e.g. 11.95 → floored to 11, making the entire band
+    // read one hour low. The outer `% 24` handles Math.round wrapping
+    // 23.7 → 24 → midnight.
+    const local24 =
+      Math.round((((utcH + realLon / 15) % 24) + 24) % 24) % 24;
     cells.push({
       offset,
       realLon,

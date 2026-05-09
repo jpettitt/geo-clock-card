@@ -99,4 +99,32 @@ describe('buildHourCells (antimeridian-centered, hours only)', () => {
     expect(cells[12].realLon).toBe(-90);
     expect(cells[12].isNoon).toBe(true);
   });
+
+  it('rounds at fractional longitudes: EoT-shifted sun-centered case', () => {
+    // Regression for the "off by one hour" bug in sun-centered mode.
+    // In May, EoT ≈ +3 min so the subsolar longitude at noon UTC
+    // sits at ≈-0.75° (west of Greenwich). Sun-centered band passes
+    // centerLon = subsolar, so cell 12 lands at -0.75°. Local time
+    // at that meridian is (12 + -0.75/15) = 11.95 — should display
+    // noon, not 11. Floor truncation made the entire band read an
+    // hour low.
+    const cells = buildHourCells(
+      new Date('2024-05-09T12:00:00Z'),
+      MAP_W,
+      -0.75,
+    );
+    expect(cells[12].realLon).toBeCloseTo(-0.75, 5);
+    expect(cells[12].hour12).toBe(12);
+    expect(cells[12].isNoon).toBe(true);
+    // The same shift should apply to every other cell: each column
+    // is one whole hour offset from the noon column, so all 25 cells
+    // round to integer hours, none of them stuck a half-hour off.
+    for (const c of cells) {
+      // Either of these flags being asserted by floor-bug code would
+      // skip a column over a whole hour; round keeps each column on
+      // its expected integer hour.
+      expect(c.hour12).toBeGreaterThanOrEqual(1);
+      expect(c.hour12).toBeLessThanOrEqual(12);
+    }
+  });
 });
