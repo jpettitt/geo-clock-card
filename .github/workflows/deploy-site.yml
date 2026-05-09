@@ -32,9 +32,16 @@ jobs:
 
       - name: Read version from package.json
         id: version
+        # jq is pre-installed on GitHub-hosted runners; -r drops the
+        # quotes so $VERSION becomes a plain "0.2.0" string. The
+        # node -p approach broke here because backslash-escaped quotes
+        # inside single-quoted shell are literal, not JS-quote
+        # delimiters — node got `require(\"./package.json\").version`
+        # and silently produced an empty result, which then made the
+        # asset-sync target `s3://geoclock-world/v/` instead of
+        # `/v0.2.0/`.
         run: |
-          echo "version=$(node -p 'require(\"./package.json\").version')" \
-            >> "$GITHUB_OUTPUT"
+          echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS CLI for R2
         env:
