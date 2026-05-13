@@ -119,10 +119,23 @@
   </div>
 
   <script type="module">
-    // Pinned to the same release the live demo uses. Bump this in
-    // lockstep with index.html when promoting a new version of the
-    // card bundle.
-    const ASSET_BASE = '/v0.2.2';
+    // Two deployments share this file:
+    //
+    //   • Live demo at https://geoclock.world/wallpaper.html —
+    //     served by Cloudflare R2, imports versioned card assets
+    //     from /v<X.Y.Z>/. Bumped in lockstep with index.html.
+    //   • Bundled into GeoClockWallpaper.app (the macOS wallpaper
+    //     app), loaded via the custom geoclock-app:// scheme so
+    //     it runs fully offline. Sibling files (geo-clock-card.js,
+    //     imagery, GeoJSON) sit next to this page in the bundle.
+    //
+    // Detect which deployment we're in by the page's protocol:
+    // https/http means we're on the CDN, anything else (typically
+    // geoclock-app:) means the bundled local copy.
+    const ASSET_BASE =
+      location.protocol === 'https:' || location.protocol === 'http:'
+        ? '/v0.2.2'
+        : '.';
 
     /**
      * Parse the cfg parameter from URL — hash fragment first
