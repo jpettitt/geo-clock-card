@@ -17,7 +17,9 @@ dist/*.map
 
 # Local-test symlink for the geoclock.world demo — see
 # docs/web/README.md ("Local testing"). Pointed at ../../dist so the
-# page's `/v0.2.0/...` imports resolve against the freshly-built
+# page's `/v0.2.x/...` imports resolve against the freshly-built
 # bundle. Never commit; production R2 holds the real versioned
-# assets.
+# assets. The two patterns (with and without trailing slash) cover
+# both directory copies and symlinks — git treats them differently.
 docs/web/v*/
+docs/web/v*

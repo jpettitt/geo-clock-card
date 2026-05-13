@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>geoclock wallpaper</title>
+  <meta name="description" content="Chrome-less, full-bleed geo-clock map intended to be rendered by a screenshot pipeline and set as a desktop wallpaper.">
+
+  <!--
+    wallpaper.html — chrome-less render of geo-clock-card, sized to
+    fill whatever viewport the embedder mounts in (5K desktop, 4K
+    Cinema, ultrawide, …). Intended consumers:
+
+      - GeoClockWallpaper.app (macOS menu-bar app) running a
+        WKWebView at the target screen resolution, calling
+        webView.takeSnapshot(...) every N minutes, and feeding the
+        result to NSWorkspace.setDesktopImageURL.
+      - Other screenshot pipelines (puppeteer, headless Chrome,
+        cron + chromium-headless-shell) that want a clean image
+        with no page chrome.
+      - Curious humans who want to see what their HA config looks
+        like at full-screen.
+
+    Two ways to pass config in (use whichever fits the caller):
+
+      1. URL parameter (good for bookmarks / sharing):
+            /wallpaper.html?cfg=<base64 or URL-encoded JSON>
+         The hash-fragment form (#cfg=...) is also accepted and
+         takes precedence — it doesn't show up in CDN access logs.
+
+      2. JS API (good for app embedders that build configs in
+         memory and don't want URL-length limits or escaping):
+            webView.evaluateJavaScript(
+              "geoclockConfigure({ config: {...}, hass: {...} })")
+
+    Config shape (both routes share it):
+
+      {
+        "config": <GeoClockCardConfig>,    // exactly what
+                                           // setConfig() accepts
+        "hass":   <HassLike subset>        // optional, see types.ts
+      }
+
+    Inline-coordinate markers (convenience for the wallpaper use
+    case — most desktop users don't have an HA back-end at hand):
+
+      "config": {
+        "markers": [
+          { "label": "Office",
+            "latitude": 37.77,
+            "longitude": -122.42,
+            "color":   "#3da9fc" },
+          ...
+        ]
+      }
+
+    Any marker that omits the `entity` field gets a synthesized
+    entity ID and matching hass.states entry built for it before
+    the config reaches setConfig(). Entity-style markers (with an
+    explicit `entity` field) still work — pass a matching hass
+    stub yourself.
+
+    Same expansion applies to centerEntity / mainTimeEntity if you
+    pass `centerLatitude`/`centerLongitude` or
+    `mainTimeZone` shortcuts (see below).
+
+    What's NOT supported here:
+      - hover / tap popups (no input device on a static wallpaper)
+      - the editor (no UI chrome at all)
+    Those code paths are still in the bundle — we just don't
+    surface them.
+  -->
+
+  <style>
+    /* Reset everything; the card is the page. No margins, no
+       scrollbars, no header/footer chrome. The body is sized to
+       the viewport (which equals the embedder's WKWebView frame /
+       headless-Chrome viewport / browser window). */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+      overflow: hidden;
+    }
+    /* The card fills the viewport. Its internal .frame normally
+       enforces a 2048/1068 aspect-ratio that would letterbox most
+       screen aspects; the post-mount hook below overrides that to
+       `auto` + 100vh/100vw so the SVG's
+       preserveAspectRatio="xMidYMid slice" handles the fit/crop
+       instead. */
+    geo-clock-card {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+    /* Stage-error fallback identical to index.html — if the JS
+       import fails we want something readable on the wallpaper
+       instead of a black void. */
+    .stage-error {
+      display: none;
+      position: fixed;
+      inset: 0;
+      align-items: center;
+      justify-content: center;
+      color: #9aa3b0;
+      font: 0.95rem -apple-system, BlinkMacSystemFont, system-ui,
+            sans-serif;
+      text-align: center;
+      padding: 2rem;
+    }
+    .stage-error.is-visible { display: flex; }
+  </style>
+</head>
+<body>
+  <div class="stage-error" id="stage-error">
+    Couldn't load the card bundle. Check the JS console.
+  </div>
+
+  <script type="module">
+    // Pinned to the same release the live demo uses. Bump this in
+    // lockstep with index.html when promoting a new version of the
+    // card bundle.
+    const ASSET_BASE = '/v0.2.2';
+
+    /**
+     * Parse the cfg parameter from URL — hash fragment first
+     * (private; not sent to server / not logged by CDN), then query
+     * string. Accepts either base64-encoded JSON or raw URL-encoded
+     * JSON. Returns a normalized `{ config, hass }` object; falls
+     * back to `{ config: { type: 'custom:geo-clock-card' } }` if no
+     * cfg is provided.
+     */
+    function parseWallpaperParams() {
+      const hash = new URLSearchParams(location.hash.slice(1));
+      const query = new URLSearchParams(location.search);
+      const raw = hash.get('cfg') ?? query.get('cfg');
+      if (!raw) return { config: { type: 'custom:geo-clock-card' } };
+
+      // Try base64 first because most callers (Swift app, others)
+      // will encode that way to avoid quoting the JSON braces /
+      // quotes in a URL. Fall back to raw URL-decoded JSON for the
+      // hand-built case.
+      let json;
+      try {
+        json = atob(raw);
+      } catch {
+        json = decodeURIComponent(raw);
+      }
+      try {
+        const parsed = JSON.parse(json);
+        return parsed;
+      } catch (err) {
+        console.error('wallpaper: cfg is not valid JSON', err, json);
+        return { config: { type: 'custom:geo-clock-card' } };
+      }
+    }
+
+    /**
+     * Walk the incoming config and synthesize a hass stub for any
+     * convenience shortcuts:
+     *   - markers: [{label, latitude, longitude, color}] (no entity)
+     *     → synthetic entity ID per marker
+     *   - centerLatitude + centerLongitude → synthetic centerEntity
+     *   - mainTimeZone → set hass.config.time_zone, force
+     *     mainTimeSource: 'home'
+     *
+     * Returns `{ config, hass }` ready to feed to setConfig() +
+     * the card's hass property. The original config is left alone;
+     * a shallow-cloned copy is mutated.
+     */
+    function expandShortcuts(cfg, hass) {
+      const out = { ...(cfg || {}) };
+      const stub = {
+        config: { ...(hass?.config || {}) },
+        states: { ...(hass?.states || {}) },
+      };
+
+      // mainTimeZone shortcut → push to hass.config.time_zone and
+      // pin mainTimeSource to 'home' (which reads that field).
+      if (typeof out.mainTimeZone === 'string' && out.mainTimeZone) {
+        stub.config.time_zone = out.mainTimeZone;
+        out.mainTimeSource = 'home';
+        delete out.mainTimeZone;
+      }
+
+      // centerLatitude + centerLongitude shortcut → either a fake
+      // entity, or use center:'home' + hass.config.latitude/longitude
+      // depending on what's already set. The simplest path is
+      // hass.config.latitude/longitude because the home centering
+      // mode reads it directly.
+      if (
+        typeof out.centerLatitude === 'number' &&
+        typeof out.centerLongitude === 'number' &&
+        !out.centerEntity
+      ) {
+        stub.config.latitude = out.centerLatitude;
+        stub.config.longitude = out.centerLongitude;
+        if (!out.center) out.center = 'home';
+        // Keep centerLongitude as-is; card uses it for
+        // center:'longitude' mode if center isn't 'home'.
+      }
+
+      // Inline-coordinate markers → synthesize an entity per
+      // marker so the card's hass-based resolution finds them.
+      if (Array.isArray(out.markers)) {
+        out.markers = out.markers.map((m, i) => {
+          if (m.entity) return m;
+          const id = `wallpaper.marker_${i}`;
+          stub.states[id] = {
+            attributes: {
+              latitude: m.latitude,
+              longitude: m.longitude,
+              friendly_name: m.label ?? `Marker ${i + 1}`,
+            },
+          };
+          return {
+            entity: id,
+            label: m.label,
+            color: m.color,
+          };
+        });
+      }
+
+      return { config: out, hass: stub };
+    }
+
+    /**
+     * Mount (or remount) the card with the given config + hass.
+     * Removes any prior card instance so repeated calls to
+     * geoclockConfigure() during a single session don't stack.
+     */
+    async function mountCard(rawConfig, rawHass) {
+      try {
+        await import(`${ASSET_BASE}/geo-clock-card.js`);
+      } catch (err) {
+        console.error('wallpaper: failed to load card bundle', err);
+        document.getElementById('stage-error')
+          .classList.add('is-visible');
+        return;
+      }
+
+      const { config, hass } = expandShortcuts(rawConfig, rawHass);
+
+      // Remove any previous card so configure() can be called more
+      // than once. The stage-error div stays — it's hidden by
+      // default and only flipped on if loading fails.
+      document.querySelectorAll('geo-clock-card').forEach((el) =>
+        el.remove(),
+      );
+
+      const card = document.createElement('geo-clock-card');
+      card.setConfig({
+        type: 'custom:geo-clock-card',
+        ...config,
+      });
+      // hass goes via property binding (not attribute) so the card
+      // sees the object reference directly.
+      card.hass = hass;
+      document.body.appendChild(card);
+
+      // Override the card's internal .frame aspect-ratio so the
+      // wallpaper fills the entire viewport instead of letterboxing
+      // to 2048/1068. The SVG's preserveAspectRatio="xMidYMid slice"
+      // handles the crop for whatever aspect the embedder mounts at.
+      await card.updateComplete?.catch(() => {});
+      const frame = card.shadowRoot?.querySelector('.frame');
+      if (frame) {
+        frame.style.aspectRatio = 'auto';
+        frame.style.width = '100vw';
+        frame.style.height = '100vh';
+      }
+
+      // Signal "card is mounted and laid out" so embedders driving
+      // the screenshot loop know when it's safe to call
+      // takeSnapshot(). WKWebView surfaces window messages via
+      // postMessage handlers; postMessage on window itself is a
+      // benign no-op for other consumers.
+      try {
+        window.webkit?.messageHandlers?.geoclockReady?.postMessage('ready');
+      } catch {}
+      window.dispatchEvent(new CustomEvent('geoclock-ready'));
+    }
+
+    // Programmatic entry point. Swift app calls this via
+    // WKWebView.evaluateJavaScript so it can pass complex configs
+    // without URL encoding.
+    window.geoclockConfigure = function ({ config, hass } = {}) {
+      return mountCard(config, hass);
+    };
+
+    // Initial render from URL params (or empty config if none).
+    const initial = parseWallpaperParams();
+    mountCard(initial.config, initial.hass);
+  </script>
+</body>
+</html>

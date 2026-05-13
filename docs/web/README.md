@@ -10,9 +10,19 @@ origin behind the same CDN) serves this directory's `index.html`.
 
 - [`index.html`](index.html) — the single-page site. One constant
   (`ASSET_BASE`) controls which release of the card the demo loads;
-  defaults to `/v0.2.0`.
+  bumped in lockstep with the live release.
+- [`wallpaper.html`](wallpaper.html) — chrome-less, full-bleed
+  render of the card meant to be screenshotted and set as a
+  desktop wallpaper. Accepts the full card config via
+  `?cfg=<base64-or-URL-encoded JSON>` (URL form), or via
+  `window.geoclockConfigure({ config, hass })` (JS API form — used
+  by the macOS wallpaper app). See the in-file header comment for
+  the supported shortcuts (inline-coordinate markers,
+  `mainTimeZone`, `centerLatitude` / `centerLongitude`).
 - [`preview.png`](preview.png) — screenshot used by the project's
   root README and as the page's OpenGraph image.
+- [`favicon.svg`](favicon.svg) /
+  [`apple-touch-icon.png`](apple-touch-icon.png) — site icons.
 
 No `CNAME` or `.nojekyll` files: those are GitHub Pages conventions.
 Cloudflare uses dashboard-configured custom domains and serves files
