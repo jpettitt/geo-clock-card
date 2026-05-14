@@ -303,9 +303,20 @@
       return mountCard(config, hass);
     };
 
-    // Initial render from URL params (or empty config if none).
-    const initial = parseWallpaperParams();
-    mountCard(initial.config, initial.hass);
+    // Auto-mount strategy is protocol-aware. The browser
+    // deployment (https://geoclock.world/wallpaper.html) renders
+    // a default map immediately so visitors see something
+    // without any JS plumbing. Native embedders (geoclock-app://
+    // in the macOS wallpaper app, file:// in other contexts)
+    // always call geoclockConfigure explicitly — letting the
+    // page also auto-mount under those schemes causes two mount
+    // cycles (default → configured) and therefore two
+    // `geoclockReady` events, which makes the screenshot pipeline
+    // capture the wrong frame and pay for two takeSnapshot calls.
+    if (location.protocol === 'https:' || location.protocol === 'http:') {
+      const initial = parseWallpaperParams();
+      mountCard(initial.config, initial.hass);
+    }
   </script>
 </body>
 </html>

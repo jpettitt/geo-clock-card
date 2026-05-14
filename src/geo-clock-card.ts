@@ -750,8 +750,39 @@ export class GeoClockCard extends LitElement {
     const sub = subsolarPoint(mapNow);
     const curve = terminatorCurve(sub, { centerLon });
     const poly = terminatorPolygon(sub, { centerLon });
-    const points = polygonToSvgPoints(poly, MAP_W, MAP_H);
-    const curvePoints = polygonToSvgPoints(curve, MAP_W, MAP_H);
+    // Build a single tiled night polygon spanning x = [-MAP_W,
+    // 2·MAP_W]. The original `poly` has vertical closing edges at
+    // x=0 and x=MAP_W (down to the dark-pole lat), and the
+    // night-mask's feather filter renders those verticals as a
+    // fading edge — visible as a fuzzy translucent bar inside
+    // the rendered map. Tiling three terminator wraps into one
+    // closed polygon moves the only vertical edges out to
+    // x=-MAP_W and x=+2·MAP_W, well past the viewBox, so the
+    // feather only ever fades the actual terminator curve.
+    const darkPoleLat = poly[poly.length - 1][1]
+    const tiledPolyVertices: [number, number][] = [
+      ...curve.map(([lonE, lat]) => [lonE - 360, lat] as [number, number]),
+      ...curve,
+      ...curve.map(([lonE, lat]) => [lonE + 360, lat] as [number, number]),
+      [720, darkPoleLat],
+      [-360, darkPoleLat],
+    ]
+    const points = polygonToSvgPoints(tiledPolyVertices, MAP_W, MAP_H);
+    // Tiled twilight-curve points spanning x = [-MAP_W, 2·MAP_W]
+    // as a single continuous polyline. The day/night image pair
+    // tiles into the side bars when the SVG element is letterboxed
+    // wider than the viewBox aspect, and the dusk rim has to
+    // follow. Building one polyline rather than three separates
+    // avoids per-segment "stroke-linecap: round" caps at the
+    // seams (which produced a faint vertical jag at the wrap
+    // boundaries) and lets the Gaussian-blur filter run over a
+    // single continuous bounding box.
+    const tiledCurve = [
+      ...curve.map(([lonE, lat]) => [lonE - 360, lat] as const),
+      ...curve,
+      ...curve.map(([lonE, lat]) => [lonE + 360, lat] as const),
+    ]
+    const curvePoints = polygonToSvgPoints(tiledCurve, MAP_W, MAP_H);
 
     // Twilight band → Gaussian σ in image-pixel space. Total fade
     // ≈ 8σ end-to-end; mapping elevation degrees → arc degrees → px
@@ -832,12 +863,27 @@ export class GeoClockCard extends LitElement {
             <mask
               id="night-mask"
               maskUnits="userSpaceOnUse"
-              x="0"
+              x="${-MAP_W}"
               y="0"
-              width="${MAP_W}"
+              width="${3 * MAP_W}"
               height="${MAP_H}"
             >
-              <rect width="${MAP_W}" height="${MAP_H}" fill="black" />
+              <rect
+                x="${-MAP_W}" y="0"
+                width="${3 * MAP_W}" height="${MAP_H}"
+                fill="black" />
+              <!-- Single tiled night-region polygon spanning
+                   x = [-MAP_W, 2·MAP_W]. Day/night image pairs
+                   are themselves drawn at offsetPx and
+                   offsetPx-MAP_W, which means content can land
+                   anywhere in that wrap range when the SVG is
+                   letterboxed inside a wider viewport (e.g. a
+                   21:9 ultrawide). Tiling three terminator wraps
+                   into ONE closed polygon (rather than three
+                   separately-feathered copies) keeps the
+                   feather filter from rendering visible vertical
+                   fade edges at the wrap seams inside the
+                   viewBox — see tiledPolyVertices above. -->
               <polygon points="${points}" fill="white" filter="url(#feather)" />
             </mask>
             <filter
@@ -871,31 +917,72 @@ export class GeoClockCard extends LitElement {
                  preserveAspectRatio="none"
                  mask="url(#night-mask)"/>
 
+          <!-- Single tiled twilight-glow polyline. Points are
+               pre-tiled at x = curve, curve-MAP_W, curve+MAP_W
+               (see tiledCurve above) so the dusk rim is one
+               continuous stroke across the wrap range — no
+               per-segment round-caps creating jags at the
+               seams, and the Gaussian-blur filter has a single
+               bounding box to work against. -->
           <polyline class="twilight-glow"
                     points="${curvePoints}"
                     stroke-width="${glowStrokeWidth}"
                     filter="url(#twilight-blur)"/>
 
           ${this.tzPolygons && this.config.showTimezoneBoundaries
-            ? this.tzPolygons.map(
-                (p) => svg`<path class="tz-region" d="${p.d}"
-                                 @pointerenter=${(e: PointerEvent) => this.onOffsetEnter(e, p)}
-                                 @pointermove=${this.onZoneMove}
-                                 @pointerleave=${this.onOffsetLeave}/>`,
-              )
+            ? svg`
+                <g transform="translate(${-MAP_W} 0)" pointer-events="none">
+                  ${this.tzPolygons.map(
+                    (p) => svg`<path class="tz-region" d="${p.d}"/>`,
+                  )}
+                </g>
+                ${this.tzPolygons.map(
+                  (p) => svg`<path class="tz-region" d="${p.d}"
+                                   @pointerenter=${(e: PointerEvent) => this.onOffsetEnter(e, p)}
+                                   @pointermove=${this.onZoneMove}
+                                   @pointerleave=${this.onOffsetLeave}/>`,
+                )}
+                <g transform="translate(${MAP_W} 0)" pointer-events="none">
+                  ${this.tzPolygons.map(
+                    (p) => svg`<path class="tz-region" d="${p.d}"/>`,
+                  )}
+                </g>
+              `
             : ''}
           ${this.tzIanaPolygons && this.config.showTimezoneBoundaries
-            ? this.tzIanaPolygons.map(
-                (p) => svg`<path class="tz-iana-region${
-                                  this.hoveredIana === p ? ' is-active' : ''
-                                }" d="${p.d}"
-                                 @pointerenter=${(e: PointerEvent) => this.onIanaEnter(e, p)}
-                                 @pointermove=${this.onZoneMove}
-                                 @pointerleave=${this.onIanaLeave}/>`,
-              )
+            ? svg`
+                <g transform="translate(${-MAP_W} 0)" pointer-events="none">
+                  ${this.tzIanaPolygons.map(
+                    (p) => svg`<path class="tz-iana-region" d="${p.d}"/>`,
+                  )}
+                </g>
+                ${this.tzIanaPolygons.map(
+                  (p) => svg`<path class="tz-iana-region${
+                                    this.hoveredIana === p ? ' is-active' : ''
+                                  }" d="${p.d}"
+                                   @pointerenter=${(e: PointerEvent) => this.onIanaEnter(e, p)}
+                                   @pointermove=${this.onZoneMove}
+                                   @pointerleave=${this.onIanaLeave}/>`,
+                )}
+                <g transform="translate(${MAP_W} 0)" pointer-events="none">
+                  ${this.tzIanaPolygons.map(
+                    (p) => svg`<path class="tz-iana-region" d="${p.d}"/>`,
+                  )}
+                </g>
+              `
             : ''}
 
-          ${showBand ? timezoneBand(mapNow, MAP_W, centerLon) : ''}
+          ${showBand
+            ? svg`
+                <g transform="translate(${-MAP_W} 0)" pointer-events="none">
+                  ${timezoneBand(mapNow, MAP_W, centerLon)}
+                </g>
+                ${timezoneBand(mapNow, MAP_W, centerLon)}
+                <g transform="translate(${MAP_W} 0)" pointer-events="none">
+                  ${timezoneBand(mapNow, MAP_W, centerLon)}
+                </g>
+              `
+            : ''}
         </svg>
         ${this.config.showHomeMarker
           ? this.renderHomeMarkerOverlay(
