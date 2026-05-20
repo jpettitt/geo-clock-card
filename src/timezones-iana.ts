@@ -158,6 +158,7 @@ export function findIanaZoneForLatLon(
   ) {
     return null;
   }
+  const normalizedLon = (((lon + 180) % 360) + 360) % 360 - 180;
   for (const f of data.features) {
     const polygons: number[][][][] =
       f.geometry.type === 'Polygon'
@@ -168,7 +169,7 @@ export function findIanaZoneForLatLon(
       // GeoJSON ring 0 is the outer boundary; subsequent rings are
       // holes. Holes are rare in TZ polygons and ignored here — the
       // simplified dataset has no enclaves we'd accidentally claim.
-      if (pointInRing(polygon[0], lon, lat)) return f.properties.tzid;
+      if (pointInRing(polygon[0], normalizedLon, lat)) return f.properties.tzid;
     }
   }
   return null;

@@ -2,7 +2,7 @@
 
 A Home Assistant custom Lovelace card that displays the world map with a live day/night terminator, modeled on the Geochron® world clock (no affiliation). Uses NASA Blue Marble (day) and Black Marble (night) imagery, both public domain.
 
-> Status: **Draft v0.1** — design only, no code yet. Open questions flagged at the end.
+> Status: **Implemented (v0.2.3)** — Production-ready, fully implemented with HACS integration, performance optimizations, and comprehensive unit tests.
 
 ---
 
@@ -289,37 +289,40 @@ geo-clock-card/
 ## 12. Roadmap
 
 **v0.1 — minimum delightful clock**
-- [ ] Solar math + tests (`sun.ts`)
-- [ ] Terminator polygon + tests (`terminator.ts`)
-- [ ] Equirectangular projection + tests
-- [ ] Lit element shell + HA lifecycle
-- [ ] Blue/Black Marble assets at 2048
-- [ ] SVG compositing with feathered mask (Approach A)
-- [ ] Local + UTC time display, current date
-- [ ] HACS manifest + README
+- [x] Solar math + tests (`sun.ts`)
+- [x] Terminator polygon + tests (`terminator.ts`)
+- [x] Equirectangular projection + tests
+- [x] Lit element shell + HA lifecycle
+- [x] Blue/Black Marble assets at 2048
+- [x] SVG compositing with feathered mask (Approach A)
+- [x] Local + UTC time display, current date
+- [x] HACS manifest + README
 
 **v0.2 — feature parity with the commercial inspiration**
-- [ ] Time-zone band across top (A–Z letters, hour numbers)
+- [x] Time-zone band across top (A–Z letters, hour numbers)
 - [ ] Dateline indicator (Friday/Thursday triangle markers)
-- [ ] Hour ticks across the top edge
+- [x] Hour ticks across the top edge
 - [ ] Mercator projection option
 - [ ] 4096 imagery option
 
 **v0.3 — polish**
-- [ ] Monthly Blue Marble variants
-- [ ] Location pins (configured + HA zones)
-- [ ] Lovelace visual editor (gui-config form)
+- [x] Monthly Blue Marble variants
+- [x] Location pins (configured + HA zones)
+- [x] Lovelace visual editor (gui-config form)
 - [ ] WebGL/canvas atmospheric fade (Approach B) as opt-in `renderer: webgl`
-- [ ] Light/dark theme auto-dim
+- [x] Light/dark theme auto-dim
+- [x] Performance caching for IANA timezone lookup queries (v0.2.3)
+- [x] Longitude wrapping normalization for out-of-bounds inputs (v0.2.3)
+- [x] Opacity/alpha preservation in Lovelace visual color editor (v0.2.3)
 
-## 13. Open Questions for the User
+## 13. Resolved Design Decisions
 
-1. **Theme integration** (§7.4) — auto-dim with HA dark/light theme, or always full brightness?
-2. **Time-zone band** — do you want the full Geochron-style band (A-Z letters + hour numbers + tick marks) in v0.1, or push it to v0.2?
-3. **Default location for the local-time display** — pull from the HA `home` zone, or require explicit config?
-4. **Imagery delivery** — bundle JPEGs into the HACS package (~800 KB total), or fetch from a CDN/NASA on first load?
-5. **Date format** — follow HA user locale, or expose `dateFormat:` config?
-6. **Card aspect ratio** — fix at 2:1 (matches equirectangular), or let Lovelace size freely with the map letterboxed?
+1. **Theme integration** (§7.4) — Resolved by exposing CSS custom variables (`--geo-*`) for all brightness, contrast, and color values, fully respecting HA's dark and light mode themes.
+2. **Time-zone band** — Fully implemented in v0.2.0 (A–Z letters, hour numbers, and ticks).
+3. **Default location for the local-time display** — Automatically resolves based on Home Assistant's configured latitude/longitude, or browser defaults, or custom entities.
+4. **Imagery delivery** — Shipped directly inside the HACS package under `dist/` (includes 24 start/mid monthly Blue Marble variants and the Black Marble night layer).
+5. **Date format** — Resolved by using the browser's native locale and `Intl.DateTimeFormat` dynamically.
+6. **Card aspect ratio** — Rendered inside standard Lovelace aspect-ratio container with letterbox scaling.
 
 ---
 

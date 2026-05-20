@@ -75,6 +75,7 @@ export class GeoClockCard extends LitElement {
   private tzPolygonsCenterLon: number | null = null;
   private tzData: Awaited<ReturnType<typeof loadTimezones>> | null = null;
   private tzIanaData: Awaited<ReturnType<typeof loadIanaTimezones>> | null = null;
+  private ianaTzCache = new Map<string, string | null>();
   @state() private hoveredIana: IanaPolygon | null = null;
   @state() private hoveredOffset: TzPolygon | null = null;
   @state() private hoveredMarker: ResolvedMarker | null = null;
@@ -415,6 +416,7 @@ export class GeoClockCard extends LitElement {
     const seed = frozenNow ?? new Date();
     this.displayNow = seed;
     this.mapNow = seed;
+    this.ianaTzCache.clear();
     // New config might change centerLon → invalidate cached paths.
     this.tzPolygons = null;
     this.tzIanaPolygons = null;
@@ -556,6 +558,7 @@ export class GeoClockCard extends LitElement {
     loadIanaTimezones(url)
       .then((data) => {
         this.tzIanaData = data;
+        this.ianaTzCache.clear();
         this.requestUpdate();
       })
       .catch((err) => {
@@ -646,6 +649,17 @@ export class GeoClockCard extends LitElement {
     return { lat, lon };
   }
 
+  private lookupIanaTz(lat: number, lon: number): string | null {
+    if (!this.tzIanaData) return null;
+    const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+    let val = this.ianaTzCache.get(key);
+    if (val === undefined) {
+      val = findIanaZoneForLatLon(this.tzIanaData, lat, lon);
+      this.ianaTzCache.set(key, val);
+    }
+    return val;
+  }
+
   /**
    * Resolve the IANA tzid the main clock readout should use, based on
    * `mainTimeSource`. Returns undefined to mean "use the browser's
@@ -668,7 +682,7 @@ export class GeoClockCard extends LitElement {
         const home = this.resolveHomeLatLon();
         if (home && this.tzIanaData) {
           return (
-            findIanaZoneForLatLon(this.tzIanaData, home.lat, home.lon) ??
+            this.lookupIanaTz(home.lat, home.lon) ??
             undefined
           );
         }
@@ -685,7 +699,7 @@ export class GeoClockCard extends LitElement {
           this.tzIanaData
         ) {
           return (
-            findIanaZoneForLatLon(this.tzIanaData, lat, lon) ?? undefined
+            this.lookupIanaTz(lat, lon) ?? undefined
           );
         }
         return undefined;
@@ -716,9 +730,7 @@ export class GeoClockCard extends LitElement {
           : m.entity;
       const label =
         (typeof m.label === 'string' && m.label.trim()) || friendly;
-      const tzid = this.tzIanaData
-        ? findIanaZoneForLatLon(this.tzIanaData, lat, lon)
-        : null;
+      const tzid = this.lookupIanaTz(lat, lon);
       out.push({
         entity: m.entity,
         label,
@@ -1168,7 +1180,7 @@ export class GeoClockCard extends LitElement {
     const home = this.resolveHomeLatLon();
     if (home && this.tzIanaData) {
       return (
-        findIanaZoneForLatLon(this.tzIanaData, home.lat, home.lon) ??
+        this.lookupIanaTz(home.lat, home.lon) ??
         undefined
       );
     }
@@ -1476,8 +1488,12 @@ function formatMarkerTime(d: Date, tz: string | undefined, withDay: boolean): st
   };
   const time = new Intl.DateTimeFormat(undefined, opts).format(d);
   if (!withDay) return time;
+  // Short weekday ("Wed" / "mié.") rather than long ("Wednesday")
+  // — marker labels stay narrow enough to fit under the dot at
+  // typical card widths and the wallpaper-app's overlay markers
+  // already render this format, so the two readings agree.
   const dayOpts: Intl.DateTimeFormatOptions = {
-    weekday: 'long',
+    weekday: 'short',
     ...(tz ? { timeZone: tz } : {}),
   };
   const day = new Intl.DateTimeFormat(undefined, dayOpts).format(d);

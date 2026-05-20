@@ -214,10 +214,69 @@ export class GeoClockCardEditor extends LitElement {
     };
   }
 
-  private strField(field: keyof GeoClockCardConfig) {
+
+  private hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+    return m
+      ? {
+          r: parseInt(m[1], 16),
+          g: parseInt(m[2], 16),
+          b: parseInt(m[3], 16),
+        }
+      : null;
+  }
+
+  private applyAlpha(newHex: string, oldColor: string | undefined): string {
+    if (!oldColor) return newHex;
+
+    // 1. Check if oldColor is 8-digit hex (#RRGGBBAA)
+    if (/^#[0-9a-f]{8}$/i.test(oldColor)) {
+      const alpha = oldColor.slice(7, 9);
+      return newHex + alpha;
+    }
+
+    // 2. Check if oldColor is 4-digit hex (#RGBA)
+    if (/^#[0-9a-f]{4}$/i.test(oldColor)) {
+      const alpha = oldColor.slice(4, 5);
+      return newHex + alpha + alpha;
+    }
+
+    // 3. Check if oldColor is rgba(...) format with commas
+    const rgbaCommaMatch = /^\s*rgba\s*\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*([0-9.]+)\s*\)\s*$/i.exec(oldColor);
+    if (rgbaCommaMatch) {
+      const alphaStr = rgbaCommaMatch[1];
+      const rgb = this.hexToRgb(newHex);
+      if (rgb) {
+        return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alphaStr})`;
+      }
+    }
+
+    // 4. Check if oldColor is modern space-separated rgba(...)
+    const rgbaSpaceMatch = /^\s*rgba\s*\(\s*\d+\s+\d+\s+\d+\s*\/\s*([0-9.]+)\s*\)\s*$/i.exec(oldColor);
+    if (rgbaSpaceMatch) {
+      const alphaStr = rgbaSpaceMatch[1];
+      const rgb = this.hexToRgb(newHex);
+      if (rgb) {
+        return `rgba(${rgb.r} ${rgb.g} ${rgb.b} / ${alphaStr})`;
+      }
+    }
+
+    return newHex;
+  }
+
+  private colorField(field: keyof GeoClockCardConfig) {
     return (e: Event) => {
       const v = (e.target as HTMLInputElement).value;
-      this.fire(field, v);
+      const oldColor = this._config?.[field] as string | undefined;
+      const nextColor = this.applyAlpha(v, oldColor);
+      this.fire(field, nextColor);
+    };
+  }
+
+  private patchMarkerColor(index: number, oldColor: string | undefined) {
+    return (e: Event) => {
+      const v = (e.target as HTMLInputElement).value;
+      this.patchMarker(index, { color: this.applyAlpha(v, oldColor) });
     };
   }
 
@@ -535,7 +594,7 @@ export class GeoClockCardEditor extends LitElement {
               id="marker-color"
               type="color"
               .value=${this.colorAsHex(c.markerColor, '#3da9fc')}
-              @change=${this.strField('markerColor')}
+              @change=${this.colorField('markerColor')}
             />
           </div>
 
@@ -574,10 +633,7 @@ export class GeoClockCardEditor extends LitElement {
                       m.color,
                       this.colorAsHex(c.markerColor, '#3da9fc'),
                     )}
-                    @change=${(e: Event) =>
-                      this.patchMarker(i, {
-                        color: (e.target as HTMLInputElement).value,
-                      })}
+                    @change=${this.patchMarkerColor(i, m.color)}
                   />
                 </div>
               </div>
@@ -632,7 +688,7 @@ export class GeoClockCardEditor extends LitElement {
               id="twilight-color"
               type="color"
               .value=${c.twilightColor ?? '#463701'}
-              @change=${this.strField('twilightColor')}
+              @change=${this.colorField('twilightColor')}
             />
           </div>
           <ha-textfield
@@ -650,7 +706,7 @@ export class GeoClockCardEditor extends LitElement {
               id="tz-line-color"
               type="color"
               .value=${this.tzLineColorAsHex(c.timezoneLineColor)}
-              @change=${this.strField('timezoneLineColor')}
+              @change=${this.colorField('timezoneLineColor')}
             />
           </div>
           <div class="help">

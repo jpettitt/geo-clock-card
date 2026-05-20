@@ -89,6 +89,12 @@ describe('findIanaZoneForLatLon', () => {
     expect(findIanaZoneForLatLon(data, 0, 25)).toBe('Test/Africa');
   });
 
+  it('handles wrapped longitudes correctly', () => {
+    expect(findIanaZoneForLatLon(data, 35, -80 + 360)).toBe('Test/Atlantic');
+    expect(findIanaZoneForLatLon(data, 35, -80 - 360)).toBe('Test/Atlantic');
+    expect(findIanaZoneForLatLon(data, 0, 25 + 720)).toBe('Test/Africa');
+  });
+
   it('returns null when the point is outside every polygon', () => {
     expect(findIanaZoneForLatLon(data, 60, 60)).toBeNull();
     expect(findIanaZoneForLatLon(data, -50, -50)).toBeNull();

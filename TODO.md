@@ -37,3 +37,6 @@
 - [ ] Add a render snapshot test using JSDOM to lock in SVG output for fixed timestamps
 - [ ] Storybook-ish demo page in `dev/` for local visual iteration without HA
 - [ ] CI: GitHub Actions running `npm test` and `npm run build`
+- [x] Optimize IANA timezone lookup performance via 4-decimal coordinates caching (v0.2.3)
+- [x] Fix out-of-bounds wrapped longitudes in timezone polygon searches (v0.2.3)
+- [x] Retain and preserve custom alpha transparency in Lovelace visual color editor pickers (v0.2.3)
