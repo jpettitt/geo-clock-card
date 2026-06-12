@@ -210,7 +210,17 @@ export class GeoClockCardEditor extends LitElement {
   private numField(field: keyof GeoClockCardConfig) {
     return (e: Event) => {
       const v = (e.target as HTMLInputElement).value;
-      this.fire(field, v === '' ? undefined : Number(v));
+      if (v === '') {
+        this.fire(field, undefined);
+        return;
+      }
+      // Guard non-numeric entry: Number('abc') is NaN, and NaN
+      // propagates straight through the card's clamp() (Math.max/min
+      // both return NaN) into CSS filter values, visually breaking
+      // the map until the field is corrected. Treat garbage as
+      // "unset" instead.
+      const n = Number(v);
+      this.fire(field, Number.isFinite(n) ? n : undefined);
     };
   }
 
@@ -439,8 +449,9 @@ export class GeoClockCardEditor extends LitElement {
               <div class="help">
                 Filtered to zone / person / device_tracker entities.
                 Entities without numeric <code>longitude</code> /
-                <code>latitude</code> attributes fall back to the sun
-                centering at runtime.
+                <code>latitude</code> attributes fall back to
+                Greenwich (0°) at runtime — deliberately distinct
+                from sun centering so a broken entity is visible.
               </div>
             `
           : ''}
@@ -656,19 +667,19 @@ export class GeoClockCardEditor extends LitElement {
       >
         <div class="section panel-body">
           <ha-textfield
-            label="Day brightness (0.5–2.0)"
+            label="Day brightness (0–5)"
             type="number"
-            min="0.5"
-            max="2"
+            min="0"
+            max="5"
             step="0.05"
             .value=${String(c.dayBrightness ?? 1.15)}
             @change=${this.numField('dayBrightness')}
           ></ha-textfield>
           <ha-textfield
-            label="Night contrast (0.5–3.0)"
+            label="Night contrast (0–5)"
             type="number"
-            min="0.5"
-            max="3"
+            min="0"
+            max="5"
             step="0.05"
             .value=${String(c.nightContrast ?? 1)}
             @change=${this.numField('nightContrast')}
@@ -687,7 +698,7 @@ export class GeoClockCardEditor extends LitElement {
             <input
               id="twilight-color"
               type="color"
-              .value=${c.twilightColor ?? '#463701'}
+              .value=${this.colorAsHex(c.twilightColor, '#463701')}
               @change=${this.colorField('twilightColor')}
             />
           </div>

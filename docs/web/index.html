@@ -133,11 +133,13 @@
 
     /* Native fullscreen path: .stage is sized by the browser to
        100vw × 100vh, so we drop our own aspect-ratio (otherwise it
-       fights the browser) and flex-center the card. The card keeps
-       its own internal aspect-ratio so it letterboxes inside the
-       screen as needed — on a 16:9 monitor that means a thin black
-       bar above + below the 1.917:1 map; on ultrawide the SVG's
-       preserveAspectRatio="xMidYMid slice" crops the sides. */
+       fights the browser) and flex-center the card. The card's own
+       internal .frame aspect-ratio is released by setCardFullBleed()
+       in the script below (it lives in the card's shadow DOM, out of
+       reach of page CSS) so the SVG fills the screen and
+       preserveAspectRatio="xMidYMid slice" + the wrap-tiled layers
+       (night mask, twilight, hour band, TZ boundaries) cover
+       whatever aspect the display has. */
     .stage:fullscreen,
     .stage:-webkit-full-screen {
       aspect-ratio: auto;
@@ -271,7 +273,9 @@
     // — i.e. the directory containing the loaded JS bundle — so once
     // the import resolves, every imagery + GeoJSON fetch lands on the
     // same versioned prefix. No manual imageryBase needed.
-    const ASSET_BASE = '/v0.2.2';
+    // Must match package.json#version — CI enforces this so the
+    // site can't silently keep serving an old bundle after a bump.
+    const ASSET_BASE = '/v0.2.3-beta';
 
     const stage = document.getElementById('stage');
 
@@ -316,9 +320,11 @@
     }
     function enterPseudoFullscreen() {
       document.body.classList.add('pseudo-fs');
+      setCardFullBleed(true);
     }
     function exitPseudoFullscreen() {
       document.body.classList.remove('pseudo-fs');
+      setCardFullBleed(false);
     }
     function enterFullscreen() {
       const req = stage.requestFullscreen || stage.webkitRequestFullscreen;
@@ -358,6 +364,38 @@
         exitPseudoFullscreen();
       }
     });
+
+    // In fullscreen, release the card's internal aspect-ratio so
+    // the SVG fills the whole screen and its
+    // preserveAspectRatio="xMidYMid slice" + wrap-tiled layers
+    // (night mask, twilight, hour band, TZ boundaries) take over.
+    // Without this the card keeps its fixed 1.917:1 frame: on
+    // 16:9 you get dead black bars the tiles could never fill
+    // (they tile horizontally), and on ultrawide the frame
+    // OVERFLOWS the viewport vertically and .stage's
+    // overflow:hidden crops the hour band and the clock readout.
+    // The override lives on the card's shadow .frame, so page CSS
+    // can't reach it — we set inline styles on fullscreen entry
+    // and clear them on exit, same trick the wallpaper page uses.
+    function setCardFullBleed(on) {
+      const card = document.querySelector('geo-clock-card');
+      const frame = card?.shadowRoot?.querySelector('.frame');
+      if (!frame) return;
+      if (on) {
+        frame.style.aspectRatio = 'auto';
+        frame.style.width = '100%';
+        frame.style.height = '100vh';
+      } else {
+        frame.style.aspectRatio = '';
+        frame.style.width = '';
+        frame.style.height = '';
+      }
+    }
+    function syncFullBleed() { setCardFullBleed(inAnyFullscreen()); }
+    document.addEventListener('fullscreenchange', syncFullBleed);
+    document.addEventListener('webkitfullscreenchange', syncFullBleed);
+    // (pseudo-fs has no change event; enter/exitPseudoFullscreen
+    // call setCardFullBleed directly.)
   </script>
 </body>
 </html>

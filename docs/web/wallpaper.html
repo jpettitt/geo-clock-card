@@ -132,9 +132,11 @@
     // Detect which deployment we're in by the page's protocol:
     // https/http means we're on the CDN, anything else (typically
     // geoclock-app:) means the bundled local copy.
+    // The versioned pin must match package.json#version — CI
+    // enforces this so the page can't silently serve an old bundle.
     const ASSET_BASE =
       location.protocol === 'https:' || location.protocol === 'http:'
-        ? '/v0.2.2'
+        ? '/v0.2.3-beta'
         : '.';
 
     /**
@@ -153,19 +155,20 @@
 
       // Try base64 first because most callers (Swift app, others)
       // will encode that way to avoid quoting the JSON braces /
-      // quotes in a URL. Fall back to raw URL-decoded JSON for the
-      // hand-built case.
-      let json;
+      // quotes in a URL. Fall back to raw URL-encoded JSON for the
+      // hand-built case. The fallback covers BOTH failure shapes:
+      // atob throwing, and atob "succeeding" on raw JSON that
+      // happens to be valid base64 alphabet but decodes to garbage
+      // that then fails JSON.parse.
       try {
-        json = atob(raw);
+        return JSON.parse(atob(raw));
       } catch {
-        json = decodeURIComponent(raw);
+        /* not base64-encoded JSON — try the URL-encoded form */
       }
       try {
-        const parsed = JSON.parse(json);
-        return parsed;
+        return JSON.parse(decodeURIComponent(raw));
       } catch (err) {
-        console.error('wallpaper: cfg is not valid JSON', err, json);
+        console.error('wallpaper: cfg is not valid JSON', err, raw);
         return { config: { type: 'custom:geo-clock-card' } };
       }
     }
@@ -203,6 +206,14 @@
       // depending on what's already set. The simplest path is
       // hass.config.latitude/longitude because the home centering
       // mode reads it directly.
+      //
+      // DELIBERATE: this requires BOTH coordinates. The macOS app's
+      // manual-centering mode sends `center: 'longitude'` +
+      // `centerLongitude` only, and that case must fall through to
+      // the card's native center:'longitude' handling untouched —
+      // synthesizing a home from it would re-introduce a phantom
+      // home-marker at the centering point (a bug we fixed). Don't
+      // "improve" this into a longitude-only branch.
       if (
         typeof out.centerLatitude === 'number' &&
         typeof out.centerLongitude === 'number' &&
@@ -225,7 +236,9 @@
             attributes: {
               latitude: m.latitude,
               longitude: m.longitude,
-              friendly_name: m.label ?? `Marker ${i + 1}`,
+              // `||` not `??`: the Swift app always sends a label
+              // key, sometimes as "" — empty should still fall back.
+              friendly_name: m.label || `Marker ${i + 1}`,
             },
           };
           return {
@@ -285,7 +298,20 @@
         frame.style.height = '100vh';
       }
 
-      // Signal "card is mounted and laid out" so embedders driving
+      // Wait for the actual pixels before declaring ready: the
+      // first Lit render commits <image href> elements whose
+      // bitmaps fetch + decode asynchronously, and the TZ overlay
+      // appears only after its JSON fetch completes. Screenshot
+      // embedders snapshot shortly after the ready signal, so
+      // firing on layout alone could capture a black map or a map
+      // with no boundary lines on a cold cache (the steady-state
+      // wallpaper then shows that frame for a whole refresh
+      // interval). Each wait is capped so a missing asset degrades
+      // to the old timing instead of hanging the pipeline — the
+      // embedder's own watchdog stays the final backstop.
+      await waitForCardAssets(card, config, 8000);
+
+      // Signal "card is mounted and painted" so embedders driving
       // the screenshot loop know when it's safe to call
       // takeSnapshot(). WKWebView surfaces window messages via
       // postMessage handlers; postMessage on window itself is a
@@ -294,6 +320,67 @@
         window.webkit?.messageHandlers?.geoclockReady?.postMessage('ready');
       } catch {}
       window.dispatchEvent(new CustomEvent('geoclock-ready'));
+    }
+
+    /**
+     * Resolve when the card's imagery has decoded and (when the
+     * boundary overlay is enabled) the TZ polygons have rendered,
+     * or after `timeoutMs` — whichever comes first.
+     *
+     * Imagery: collect the distinct hrefs from the SVG <image>
+     * elements and decode them through Image() — same URL, same
+     * HTTP cache entry, so this resolves as soon as the bytes the
+     * SVG needs are actually decodable.
+     *
+     * TZ overlay: the card inserts .tz-region paths only after its
+     * async JSON fetch lands, so poll the shadow root for them.
+     */
+    async function waitForCardAssets(card, config, timeoutMs) {
+      const deadline = Date.now() + timeoutMs;
+      const sr = card.shadowRoot;
+      if (!sr) return;
+
+      const hrefs = new Set();
+      sr.querySelectorAll('svg image').forEach((im) => {
+        const h = im.getAttribute('href');
+        if (h) hrefs.add(h);
+      });
+      const imageWaits = [...hrefs].map((h) => {
+        const img = new Image();
+        img.src = h;
+        return img.decode().catch(() => {});
+      });
+
+      const wantTz = config?.showTimezoneBoundaries !== false;
+      const tzWait = wantTz
+        ? (async () => {
+            while (Date.now() < deadline) {
+              if (sr.querySelector('.tz-region, .tz-iana-region')) return;
+              await new Promise((r) => setTimeout(r, 100));
+            }
+          })()
+        : Promise.resolve();
+
+      await Promise.race([
+        Promise.all([...imageWaits, tzWait]),
+        new Promise((r) => setTimeout(r, timeoutMs)),
+      ]);
+      // One more beat so the decoded bitmaps are composited
+      // before the embedder snapshots. requestAnimationFrame
+      // alone would be ideal — but in an OFFSCREEN WKWebView
+      // (the macOS app's renderer) rAF callbacks never fire (no
+      // display link), and awaiting one hangs the whole ready
+      // signal. Race it against a short timeout so on-screen
+      // browsers get the precise frame boundary and offscreen
+      // embedders fall through after 100 ms.
+      await new Promise((r) => {
+        let done = false;
+        const fin = () => { if (!done) { done = true; r(); } };
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(fin);
+        }
+        setTimeout(fin, 100);
+      });
     }
 
     // Programmatic entry point. Swift app calls this via

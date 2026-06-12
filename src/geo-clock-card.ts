@@ -1,7 +1,7 @@
 import { LitElement, html, css, svg, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { subsolarPoint } from './sun.js';
-import { terminatorCurve, terminatorPolygon } from './terminator.js';
+import { terminatorCurve } from './terminator.js';
 import { polygonToSvgPoints, latLonToPx } from './projection.js';
 import { timezoneBand, BAND_H } from './timezone-band.js';
 import { loadTimezones, timezonesToPolygons, type TzPolygon } from './timezones.js';
@@ -28,6 +28,16 @@ const MAP_H = 1024;
 const NIGHT_IMAGE = 'black-marble-2048.jpg';
 const TZ_DATA = 'timezones.json';
 const TZ_IANA_DATA = 'timezones-iana.json';
+
+// Re-projection threshold for the TZ polygon overlay, in degrees of
+// centerLon drift. Re-projecting all 419 IANA features (~1 MB of
+// path data, then browser re-tessellation) is the heaviest periodic
+// task in the card, and sun mode moves centerLon ~0.044° per map
+// tick — a quarter-pixel. We only rebuild past this threshold and
+// absorb the residual drift with a group translate (pixel-exact,
+// because translating the projected paths is mathematically the
+// same as re-projecting on an equirectangular map).
+const TZ_REBUILD_DEG = 0.5;
 
 
 
@@ -68,10 +78,21 @@ export class GeoClockCard extends LitElement {
    *  TZ overlay, hour band). Only advances when the subsolar point
    *  has moved ≥0.5 px at 4K — see MAP_UPDATE_INTERVAL_MS. */
   @state() private mapNow = new Date();
-  @state() private tzPolygons: TzPolygon[] | null = null;
-  @state() private tzIanaPolygons: IanaPolygon[] | null = null;
-  /** centerLon used the last time we built the TZ overlay paths. If
-   *  the centerLon changes, we need to re-project. */
+  /** Projected TZ overlay paths. Deliberately NOT @state: they are
+   *  computed inside render() (from tzData/tzIanaData + centerLon)
+   *  and read in the same pass. Making them reactive caused Lit to
+   *  schedule a second full update cycle every time they were
+   *  rebuilt ("update after update completed"), doubling the most
+   *  expensive render path. The async data loads call
+   *  requestUpdate() themselves, so reactivity here adds nothing. */
+  private tzPolygons: TzPolygon[] | null = null;
+  private tzIanaPolygons: IanaPolygon[] | null = null;
+  /** centerLon used the last time we built the TZ overlay paths.
+   *  Re-projection is quantized: in sun mode centerLon drifts
+   *  ~0.044° every map tick, and rebuilding 419 polygons (~1 MB of
+   *  path data) for a sub-pixel shift caused a periodic jank spike.
+   *  We rebuild only when the drift exceeds TZ_REBUILD_DEG and
+   *  absorb the residue with a group translate (see render()). */
   private tzPolygonsCenterLon: number | null = null;
   private tzData: Awaited<ReturnType<typeof loadTimezones>> | null = null;
   private tzIanaData: Awaited<ReturnType<typeof loadIanaTimezones>> | null = null;
@@ -80,6 +101,24 @@ export class GeoClockCard extends LitElement {
   @state() private hoveredOffset: TzPolygon | null = null;
   @state() private hoveredMarker: ResolvedMarker | null = null;
   @state() private hoverPos: { x: number; y: number } | null = null;
+
+  /** Memoized terminator geometry. The tiled night polygon is
+   *  ~1,085 vertices and the two SVG points strings total ~30 KB;
+   *  their only inputs are mapNow (advances every ~10 s) and
+   *  centerLon — but render() runs at 1 Hz for the clock readout
+   *  and on every hover-state change. Rebuilding per render was
+   *  the single biggest steady-state CPU cost in the card. */
+  private terminatorCache: {
+    mapNowMs: number;
+    centerLon: number;
+    points: string;
+    curvePoints: string;
+  } | null = null;
+
+  /** Pending hover position + rAF handle for the coalescer in
+   *  updateHoverPos(). */
+  private hoverPosPending: { x: number; y: number } | null = null;
+  private hoverPosRaf = 0;
 
   private config?: ResolvedConfig;
   private timer?: ReturnType<typeof setInterval>;
@@ -374,8 +413,8 @@ export class GeoClockCard extends LitElement {
     if (!config) {
       throw new Error('geo-clock-card: missing config');
     }
-    const base =
-      config.imageryBase ?? new URL('.', import.meta.url).href;
+    const base = sanitizeImageryBase(config.imageryBase)
+      ?? new URL('.', import.meta.url).href;
     const frozenNow = parseFrozenNow(config.now);
     this.config = {
       twilightDegrees: clamp(config.twilightDegrees ?? 8, 1, 18),
@@ -444,6 +483,10 @@ export class GeoClockCard extends LitElement {
     this.stopTimer();
     this.clearDismissTimer();
     this.detachVisibilityObservers();
+    if (this.hoverPosRaf) {
+      cancelAnimationFrame(this.hoverPosRaf);
+      this.hoverPosRaf = 0;
+    }
   }
 
   /** Track whether this card is on-screen and the tab is foregrounded.
@@ -651,10 +694,16 @@ export class GeoClockCard extends LitElement {
 
   private lookupIanaTz(lat: number, lon: number): string | null {
     if (!this.tzIanaData) return null;
-    const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+    // 2-decimal key (~1 km grid) — far finer than the 1%-simplified
+    // polygon boundaries we hit-test against, and it keeps a moving
+    // device_tracker from minting a fresh cache entry on every
+    // position report. The size cap guards always-on dashboards
+    // tracking many movers: 4-decimal keys grew the map unboundedly.
+    const key = `${lat.toFixed(2)},${lon.toFixed(2)}`;
     let val = this.ianaTzCache.get(key);
     if (val === undefined) {
       val = findIanaZoneForLatLon(this.tzIanaData, lat, lon);
+      if (this.ianaTzCache.size >= 512) this.ianaTzCache.clear();
       this.ianaTzCache.set(key, val);
     }
     return val;
@@ -748,6 +797,100 @@ export class GeoClockCard extends LitElement {
     return out;
   }
 
+  /**
+   * Terminator geometry as SVG points strings, tiled across
+   * x = [-MAP_W, 2·MAP_W] and memoized on (mapNow, centerLon).
+   *
+   * Why tiled: the day/night image pair is drawn at offsetPx and
+   * offsetPx-MAP_W, so when the SVG element is letterboxed inside a
+   * viewport wider than the viewBox aspect (21:9 ultrawides) map
+   * content lands in the side bars — and the night region + dusk rim
+   * must follow it there. One merged polygon (rather than three
+   * separately-feathered copies) keeps the feather filter from
+   * rendering visible vertical fade edges at the wrap seams: the
+   * polygon's only vertical closing edges sit at x=-MAP_W and
+   * x=+2·MAP_W, well outside the viewBox. Same for the polyline:
+   * one continuous stroke means no per-segment round-caps at seams.
+   *
+   * Why memoized: the inputs change every ~10 s (mapNow tick) or on
+   * a center change, but render() runs at 1 Hz plus on every hover
+   * update. Rebuilding ~1,085 vertices + ~30 KB of points strings
+   * per render was pure waste.
+   */
+  private terminatorGeometry(
+    mapNow: Date,
+    centerLon: number,
+  ): { points: string; curvePoints: string } {
+    const mapNowMs = mapNow.getTime();
+    const cached = this.terminatorCache;
+    if (
+      cached &&
+      cached.mapNowMs === mapNowMs &&
+      cached.centerLon === centerLon
+    ) {
+      return cached;
+    }
+
+    const sub = subsolarPoint(mapNow);
+    const curve = terminatorCurve(sub, { centerLon });
+    // Dark-pole latitude, mirroring terminatorPolygon's declination
+    // clamp: a clamped declination is always the same sign as
+    // sub.lat (>= 0 maps to +MIN_ABS_DECL), so the dark pole is
+    // south for northern declinations and vice versa. Computing it
+    // directly avoids re-running the whole 361-point curve a second
+    // time via terminatorPolygon just to read its last vertex.
+    const darkPoleLat = sub.lat >= 0 ? -90 : 90;
+
+    // terminatorCurve emits lonE ∈ [0, 360] INCLUSIVE, so naive
+    // concatenation would duplicate the seam vertex (left copy's
+    // lonE=360-360=0 followed by center copy's lonE=0). Slice the
+    // closing vertex off the non-final copies so the tiled arrays
+    // stay strictly monotonic in x.
+    const open = curve.slice(0, -1);
+    // Twilight polyline: full ±1 tile so the dusk rim runs
+    // continuously through the letterbox bars (strokes have no
+    // mask interactions; this has been solid in practice).
+    const tiledCurve = [
+      ...open.map(([lonE, lat]) => [lonE - 360, lat] as const),
+      ...open,
+      ...curve.map(([lonE, lat]) => [lonE + 360, lat] as const),
+    ];
+    // Night polygon: small overhang (lonE -45..405, ≈±256 px).
+    // The night-mask region is exactly one viewport wide
+    // (x ∈ [0, MAP_W]) and the bars are covered by <use> copies
+    // of the whole masked night unit — so the polygon only needs
+    // to overhang far enough that the feather blur (3σ ≤ ~77 px
+    // at the max twilight setting) never samples its vertical
+    // closing edges from inside the region. Keep the overhang
+    // SMALL: WebKit silently clips filtered mask content to
+    // roughly one viewport's width measured from the geometry's
+    // left edge, so every extra degree of overhang is a degree
+    // of night lost on the right side of the map. (A 3-tile
+    // polygon lost a third of the night layer; a half-world
+    // overhang still lost the right ~quarter.)
+    const OVERHANG_DEG = 45;
+    const tiledPolyVertices: [number, number][] = [
+      ...open.slice(open.length - OVERHANG_DEG).map(
+        ([lonE, lat]) => [lonE - 360, lat] as [number, number],
+      ),
+      ...open.map(([lonE, lat]) => [lonE, lat] as [number, number]),
+      ...curve.slice(0, OVERHANG_DEG + 1).map(
+        ([lonE, lat]) => [lonE + 360, lat] as [number, number],
+      ),
+      [360 + OVERHANG_DEG, darkPoleLat],
+      [-OVERHANG_DEG, darkPoleLat],
+    ];
+
+    const next = {
+      mapNowMs,
+      centerLon,
+      points: polygonToSvgPoints(tiledPolyVertices, MAP_W, MAP_H),
+      curvePoints: polygonToSvgPoints(tiledCurve, MAP_W, MAP_H),
+    };
+    this.terminatorCache = next;
+    return next;
+  }
+
   override render(): TemplateResult {
     if (!this.config) return html``;
 
@@ -759,42 +902,10 @@ export class GeoClockCard extends LitElement {
     const displayNow = this.config.frozenNow ?? this.displayNow;
 
     const centerLon = this.resolveCenterLon(mapNow);
-    const sub = subsolarPoint(mapNow);
-    const curve = terminatorCurve(sub, { centerLon });
-    const poly = terminatorPolygon(sub, { centerLon });
-    // Build a single tiled night polygon spanning x = [-MAP_W,
-    // 2·MAP_W]. The original `poly` has vertical closing edges at
-    // x=0 and x=MAP_W (down to the dark-pole lat), and the
-    // night-mask's feather filter renders those verticals as a
-    // fading edge — visible as a fuzzy translucent bar inside
-    // the rendered map. Tiling three terminator wraps into one
-    // closed polygon moves the only vertical edges out to
-    // x=-MAP_W and x=+2·MAP_W, well past the viewBox, so the
-    // feather only ever fades the actual terminator curve.
-    const darkPoleLat = poly[poly.length - 1][1]
-    const tiledPolyVertices: [number, number][] = [
-      ...curve.map(([lonE, lat]) => [lonE - 360, lat] as [number, number]),
-      ...curve,
-      ...curve.map(([lonE, lat]) => [lonE + 360, lat] as [number, number]),
-      [720, darkPoleLat],
-      [-360, darkPoleLat],
-    ]
-    const points = polygonToSvgPoints(tiledPolyVertices, MAP_W, MAP_H);
-    // Tiled twilight-curve points spanning x = [-MAP_W, 2·MAP_W]
-    // as a single continuous polyline. The day/night image pair
-    // tiles into the side bars when the SVG element is letterboxed
-    // wider than the viewBox aspect, and the dusk rim has to
-    // follow. Building one polyline rather than three separates
-    // avoids per-segment "stroke-linecap: round" caps at the
-    // seams (which produced a faint vertical jag at the wrap
-    // boundaries) and lets the Gaussian-blur filter run over a
-    // single continuous bounding box.
-    const tiledCurve = [
-      ...curve.map(([lonE, lat]) => [lonE - 360, lat] as const),
-      ...curve,
-      ...curve.map(([lonE, lat]) => [lonE + 360, lat] as const),
-    ]
-    const curvePoints = polygonToSvgPoints(tiledCurve, MAP_W, MAP_H);
+    const { points, curvePoints } = this.terminatorGeometry(
+      mapNow,
+      centerLon,
+    );
 
     // Twilight band → Gaussian σ in image-pixel space. Total fade
     // ≈ 8σ end-to-end; mapping elevation degrees → arc degrees → px
@@ -819,21 +930,33 @@ export class GeoClockCard extends LitElement {
     // an href so the browser issues one HTTP request per layer.
     const offsetPx = (((-centerLon / 360) * MAP_W) % MAP_W + MAP_W) % MAP_W;
 
-    // (Re)project overlays whenever the centerLon shifts OR a layer
-    // exists in data form but hasn't been projected yet (the async
-    // fetch usually arrives after the first render, so the initial
-    // center-lon check would otherwise short-circuit the build).
+    // (Re)project overlays when the centerLon has drifted past the
+    // rebuild threshold OR a layer exists in data form but hasn't
+    // been projected yet (the async fetch usually arrives after the
+    // first render). Sub-threshold drift is absorbed by translating
+    // the layer groups by tzDriftPx instead of re-projecting — see
+    // TZ_REBUILD_DEG. Late-arriving layers are built at the lon the
+    // earlier layer was recorded against so both stay aligned with
+    // each other and with the shared drift translate.
+    let tzDriftPx = 0;
     if (this.config.showTimezoneBoundaries) {
-      const centerChanged = this.tzPolygonsCenterLon !== centerLon;
-      if (this.tzData && (centerChanged || this.tzPolygons === null)) {
-        this.tzPolygons = timezonesToPolygons(this.tzData, MAP_W, MAP_H, centerLon);
+      const recorded = this.tzPolygonsCenterLon;
+      const needsRebuild =
+        recorded === null || Math.abs(recorded - centerLon) > TZ_REBUILD_DEG;
+      const buildLon = needsRebuild ? centerLon : (recorded ?? centerLon);
+      if (this.tzData && (needsRebuild || this.tzPolygons === null)) {
+        this.tzPolygons = timezonesToPolygons(this.tzData, MAP_W, MAP_H, buildLon);
       }
-      if (this.tzIanaData && (centerChanged || this.tzIanaPolygons === null)) {
+      if (this.tzIanaData && (needsRebuild || this.tzIanaPolygons === null)) {
         this.tzIanaPolygons = sortByVisualArea(
-          ianaToPolygons(this.tzIanaData, MAP_W, MAP_H, centerLon),
+          ianaToPolygons(this.tzIanaData, MAP_W, MAP_H, buildLon),
         );
       }
-      this.tzPolygonsCenterLon = centerLon;
+      this.tzPolygonsCenterLon = buildLon;
+      // Paths were projected for buildLon; the map is at centerLon.
+      // Increasing centerLon shifts map content left, so the
+      // compensation is (buildLon − centerLon) in pixel space.
+      tzDriftPx = ((buildLon - centerLon) / 360) * MAP_W;
     }
 
     const mainTz = this.resolveMainTimezone();
@@ -862,48 +985,78 @@ export class GeoClockCard extends LitElement {
           aria-label="World map with current day/night terminator"
         >
           <defs>
+            <!-- objectBoundingBox percentages, NOT userSpaceOnUse:
+                 WebKit rasterizes mask content per masked element,
+                 and an explicit user-space filter region spanning
+                 the full 3×MAP_W tile range made the mask resolve
+                 to black for the second night-image tile — a hard
+                 day/night edge at the image seam. Percentages of
+                 the polygon's bbox (which always spans the full
+                 tiled width and nearly full map height) sidestep
+                 that and still leave 3σ headroom: 5% of 6144 px
+                 horizontally and ~10% of ≥757 px vertically both
+                 comfortably exceed 3σ at the max twilightDegrees
+                 of 18 (σ ≈ 51 px). -->
             <filter
               id="feather"
               x="-5%"
-              y="-5%"
+              y="-10%"
               width="110%"
-              height="110%"
+              height="120%"
               filterUnits="objectBoundingBox"
             >
               <feGaussianBlur stdDeviation="${sigma}" />
             </filter>
+            <!-- Mask region is exactly ONE viewport (x 0..MAP_W):
+                 WebKit silently drops mask content beyond roughly
+                 a viewport's width, so the previous 3x-wide
+                 region truncated the night layer with a hard
+                 vertical edge at the image-tile boundary. The
+                 polygon overhangs the region by half a world on
+                 each side (see tiledPolyVertices) so the feather
+                 blur never reaches its closing edges, and the
+                 region's own hard clip at x=0/MAP_W is invisible
+                 because adjacent <use> instances of the night
+                 unit abut exactly there with periodic content. -->
             <mask
               id="night-mask"
               maskUnits="userSpaceOnUse"
-              x="${-MAP_W}"
+              x="0"
               y="0"
-              width="${3 * MAP_W}"
+              width="${MAP_W}"
               height="${MAP_H}"
             >
               <rect
-                x="${-MAP_W}" y="0"
-                width="${3 * MAP_W}" height="${MAP_H}"
+                x="0" y="0"
+                width="${MAP_W}" height="${MAP_H}"
                 fill="black" />
-              <!-- Single tiled night-region polygon spanning
-                   x = [-MAP_W, 2·MAP_W]. Day/night image pairs
-                   are themselves drawn at offsetPx and
-                   offsetPx-MAP_W, which means content can land
-                   anywhere in that wrap range when the SVG is
-                   letterboxed inside a wider viewport (e.g. a
-                   21:9 ultrawide). Tiling three terminator wraps
-                   into ONE closed polygon (rather than three
-                   separately-feathered copies) keeps the
-                   feather filter from rendering visible vertical
-                   fade edges at the wrap seams inside the
-                   viewBox — see tiledPolyVertices above. -->
-              <polygon points="${points}" fill="white" filter="url(#feather)" />
+              <!-- Three copies of the feathered night polygon at
+                   ±MAP_W. WebKit clips each FILTERED mask element
+                   to ~one viewport's width from the element's own
+                   left edge (measured empirically: the night
+                   layer always truncated at polygonLeft + MAP_W).
+                   Tiling the polygon as separate copies means
+                   each copy's clipped right tail is covered by
+                   the next copy — and because every copy blurs
+                   the SAME periodic geometry, the hand-off pixels
+                   compute identical values, so no seam. -->
+              <polygon id="night-poly" points="${points}" fill="white" filter="url(#feather)" />
+              <use href="#night-poly" x="${-MAP_W}" />
+              <use href="#night-poly" x="${MAP_W}" />
             </mask>
+            <!-- Same objectBoundingBox rationale as #feather above.
+                 The vertical margin is the one that was clipping:
+                 the polyline's bbox height at solstice is ~757 px
+                 and the glow needs 3σ + strokeWidth/2 ≈ 180 px at
+                 twilightDegrees 18, so ±25% (~190 px) clears it.
+                 Horizontally the bbox spans the full 6144 px tiled
+                 width, so even 3% is over 180 px. -->
             <filter
               id="twilight-blur"
-              x="-3%"
-              y="-3%"
-              width="106%"
-              height="106%"
+              x="-5%"
+              y="-25%"
+              width="110%"
+              height="150%"
               filterUnits="objectBoundingBox"
             >
               <feGaussianBlur stdDeviation="${glowBlurSigma}" />
@@ -918,16 +1071,27 @@ export class GeoClockCard extends LitElement {
                  x="${offsetPx}" y="0"
                  width="${MAP_W}" height="${MAP_H}"
                  preserveAspectRatio="none"/>
-          <image class="night-image" href="${nightHref}"
-                 x="${offsetPx - MAP_W}" y="0"
-                 width="${MAP_W}" height="${MAP_H}"
-                 preserveAspectRatio="none"
-                 mask="url(#night-mask)"/>
-          <image class="night-image" href="${nightHref}"
-                 x="${offsetPx}" y="0"
-                 width="${MAP_W}" height="${MAP_H}"
-                 preserveAspectRatio="none"
-                 mask="url(#night-mask)"/>
+          <!-- The night unit: both wrap tiles of the night image
+               under one mask whose region is a single viewport.
+               Letterbox bars are covered by <use> copies of the
+               whole unit — each instance carries its mask region
+               along with it, so every copy is self-consistently
+               masked and the seams at x=0/MAP_W are invisible
+               (periodic content meets exactly). This sidesteps
+               the WebKit wide-mask truncation described at the
+               mask definition above. -->
+          <g id="night-unit" mask="url(#night-mask)">
+            <image class="night-image" href="${nightHref}"
+                   x="${offsetPx - MAP_W}" y="0"
+                   width="${MAP_W}" height="${MAP_H}"
+                   preserveAspectRatio="none"/>
+            <image class="night-image" href="${nightHref}"
+                   x="${offsetPx}" y="0"
+                   width="${MAP_W}" height="${MAP_H}"
+                   preserveAspectRatio="none"/>
+          </g>
+          <use href="#night-unit" x="${-MAP_W}" pointer-events="none"/>
+          <use href="#night-unit" x="${MAP_W}" pointer-events="none"/>
 
           <!-- Single tiled twilight-glow polyline. Points are
                pre-tiled at x = curve, curve-MAP_W, curve+MAP_W
@@ -941,58 +1105,54 @@ export class GeoClockCard extends LitElement {
                     stroke-width="${glowStrokeWidth}"
                     filter="url(#twilight-blur)"/>
 
+          <!-- Wrap-tile copies are <use> references to the central
+               layer, not duplicated subtrees: one node per copy
+               instead of ~419, no duplicated path data in the DOM,
+               and the instances track the referenced subtree live
+               (a hover highlight on the central copy mirrors into
+               the wrap copies, which is correct — it IS the same
+               zone). The outer translate absorbs sub-threshold
+               centerLon drift (see tzDriftPx above). -->
           ${this.tzPolygons && this.config.showTimezoneBoundaries
             ? svg`
-                <g transform="translate(${-MAP_W} 0)" pointer-events="none">
-                  ${this.tzPolygons.map(
-                    (p) => svg`<path class="tz-region" d="${p.d}"/>`,
-                  )}
-                </g>
-                ${this.tzPolygons.map(
-                  (p) => svg`<path class="tz-region" d="${p.d}"
-                                   @pointerenter=${(e: PointerEvent) => this.onOffsetEnter(e, p)}
-                                   @pointermove=${this.onZoneMove}
-                                   @pointerleave=${this.onOffsetLeave}/>`,
-                )}
-                <g transform="translate(${MAP_W} 0)" pointer-events="none">
-                  ${this.tzPolygons.map(
-                    (p) => svg`<path class="tz-region" d="${p.d}"/>`,
-                  )}
+                <g transform="translate(${tzDriftPx} 0)">
+                  <g id="tz-offset-layer">
+                    ${this.tzPolygons.map(
+                      (p) => svg`<path class="tz-region" d="${p.d}"
+                                       @pointerenter=${(e: PointerEvent) => this.onOffsetEnter(e, p)}
+                                       @pointermove=${this.onZoneMove}
+                                       @pointerleave=${this.onOffsetLeave}/>`,
+                    )}
+                  </g>
+                  <use href="#tz-offset-layer" x="${-MAP_W}" pointer-events="none"/>
+                  <use href="#tz-offset-layer" x="${MAP_W}" pointer-events="none"/>
                 </g>
               `
             : ''}
           ${this.tzIanaPolygons && this.config.showTimezoneBoundaries
             ? svg`
-                <g transform="translate(${-MAP_W} 0)" pointer-events="none">
-                  ${this.tzIanaPolygons.map(
-                    (p) => svg`<path class="tz-iana-region" d="${p.d}"/>`,
-                  )}
-                </g>
-                ${this.tzIanaPolygons.map(
-                  (p) => svg`<path class="tz-iana-region${
-                                    this.hoveredIana === p ? ' is-active' : ''
-                                  }" d="${p.d}"
-                                   @pointerenter=${(e: PointerEvent) => this.onIanaEnter(e, p)}
-                                   @pointermove=${this.onZoneMove}
-                                   @pointerleave=${this.onIanaLeave}/>`,
-                )}
-                <g transform="translate(${MAP_W} 0)" pointer-events="none">
-                  ${this.tzIanaPolygons.map(
-                    (p) => svg`<path class="tz-iana-region" d="${p.d}"/>`,
-                  )}
+                <g transform="translate(${tzDriftPx} 0)">
+                  <g id="tz-iana-layer">
+                    ${this.tzIanaPolygons.map(
+                      (p) => svg`<path class="tz-iana-region${
+                                        this.hoveredIana === p ? ' is-active' : ''
+                                      }" d="${p.d}"
+                                       @pointerenter=${(e: PointerEvent) => this.onIanaEnter(e, p)}
+                                       @pointermove=${this.onZoneMove}
+                                       @pointerleave=${this.onIanaLeave}/>`,
+                    )}
+                  </g>
+                  <use href="#tz-iana-layer" x="${-MAP_W}" pointer-events="none"/>
+                  <use href="#tz-iana-layer" x="${MAP_W}" pointer-events="none"/>
                 </g>
               `
             : ''}
 
           ${showBand
             ? svg`
-                <g transform="translate(${-MAP_W} 0)" pointer-events="none">
-                  ${timezoneBand(mapNow, MAP_W, centerLon)}
-                </g>
-                ${timezoneBand(mapNow, MAP_W, centerLon)}
-                <g transform="translate(${MAP_W} 0)" pointer-events="none">
-                  ${timezoneBand(mapNow, MAP_W, centerLon)}
-                </g>
+                <g id="hour-band">${timezoneBand(mapNow, MAP_W, centerLon)}</g>
+                <use href="#hour-band" x="${-MAP_W}" pointer-events="none"/>
+                <use href="#hour-band" x="${MAP_W}" pointer-events="none"/>
               `
             : ''}
         </svg>
@@ -1117,7 +1277,17 @@ export class GeoClockCard extends LitElement {
     const frame = (e.currentTarget as Element).closest('.frame');
     if (!frame) return;
     const r = frame.getBoundingClientRect();
-    this.hoverPos = { x: e.clientX - r.left, y: e.clientY - r.top };
+    this.hoverPosPending = { x: e.clientX - r.left, y: e.clientY - r.top };
+    // Coalesce to at most one reactive write per animation frame.
+    // pointermove fires at input-device rate (120+ Hz on ProMotion)
+    // and hoverPos is @state, so a raw assignment scheduled a full
+    // card render per move event — the popup only needs to track
+    // the cursor at display refresh rate.
+    if (this.hoverPosRaf) return;
+    this.hoverPosRaf = requestAnimationFrame(() => {
+      this.hoverPosRaf = 0;
+      if (this.hoverPosPending) this.hoverPos = this.hoverPosPending;
+    });
   }
 
   /** Render the HA-configured home as an HTML overlay sibling of the
@@ -1439,6 +1609,33 @@ function parseFrozenNow(input: string | number | Date | undefined): Date | undef
   if (input == null) return undefined;
   const d = input instanceof Date ? input : new Date(input);
   return Number.isFinite(d.getTime()) ? d : undefined;
+}
+
+/**
+ * Restrict imageryBase to http(s), relative paths, or the page's own
+ * scheme. Config can arrive from an attacker-controlled `?cfg=` URL
+ * parameter on the public demo pages; a crafted base would make the
+ * visitor's browser issue GET requests (imagery + the two timezone
+ * JSON fetches) to an arbitrary origin. The fetched data is always
+ * rendered through escaped bindings so this was never script
+ * injection — but there's no reason to allow `javascript:`-shaped
+ * or cross-protocol bases at all. Returns undefined (→ caller falls
+ * back to the bundle-relative default) for anything unrecognized.
+ */
+function sanitizeImageryBase(input: string | undefined): string | undefined {
+  if (typeof input !== 'string' || input.length === 0) return undefined;
+  try {
+    const resolved = new URL(input, import.meta.url);
+    const pageProto =
+      typeof location !== 'undefined' ? location.protocol : 'https:';
+    const ok =
+      resolved.protocol === 'https:' ||
+      resolved.protocol === 'http:' ||
+      resolved.protocol === pageProto;
+    return ok ? input : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

@@ -1,12 +1,22 @@
 name: Deploy to R2
 
 # Two-stage deploy on every push to main:
-#   1. Build the card from source so dist/ is current.
+#   1. Build + test the card from source so dist/ is current.
 #   2. Sync docs/web/ to the bucket root (the geoclock.world site).
 #   3. Sync dist/ to /v<package.json#version>/ (the versioned card
 #      assets the site imports). No --delete on this step — old
 #      tagged paths stay around forever so deep-linked snapshots
 #      (e.g. anyone embedding /v0.2.0/...) keep working.
+#
+# Guards (each one earned by a real incident):
+#   - ASSET_BASE check: both HTML pages must pin the version being
+#     deployed, otherwise the site silently serves an old bundle.
+#   - Immutable-overwrite check: /vX.Y.Z/ paths ship with a 1-year
+#     immutable cache header, so re-uploading CHANGED content under
+#     an existing version splits the CDN brain — visitors with a
+#     cached copy keep the old bytes for up to a year while new
+#     visitors get the new ones. Any dist/ change must come with a
+#     version bump.
 
 on:
   push:
@@ -27,6 +37,9 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Test
+        run: npm test
+
       - name: Build
         run: npm run build
 
@@ -43,6 +56,19 @@ jobs:
         run: |
           echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
 
+      - name: Check ASSET_BASE pins match package.json
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          fail=0
+          for f in docs/web/index.html docs/web/wallpaper.html; do
+            if ! grep -q "'/v$VERSION'" "$f"; then
+              echo "::error file=$f::ASSET_BASE does not reference /v$VERSION — bump it in lockstep with package.json"
+              fail=1
+            fi
+          done
+          exit $fail
+
       - name: Configure AWS CLI for R2
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -52,6 +78,28 @@ jobs:
           aws configure set aws_access_key_id $R2_ACCESS_KEY_ID
           aws configure set aws_secret_access_key $R2_SECRET_ACCESS_KEY
           aws configure set region auto
+
+      - name: Refuse to overwrite an existing immutable version path
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # If /v$VERSION/geo-clock-card.js already exists on the
+          # bucket AND differs from what we just built, this deploy
+          # would rewrite an immutable path in place. Fail loudly —
+          # the fix is a version bump, not a force-push.
+          ep="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          key="v$VERSION/geo-clock-card.js"
+          if aws s3api head-object --endpoint-url "$ep" \
+               --bucket geoclock-world --key "$key" >/dev/null 2>&1; then
+            aws s3 cp --endpoint-url "$ep" \
+              "s3://geoclock-world/$key" /tmp/deployed.js --quiet
+            if ! cmp -s /tmp/deployed.js dist/geo-clock-card.js; then
+              echo "::error::v$VERSION already deployed with DIFFERENT content. Immutable paths must never change — bump the version in package.json (and both ASSET_BASE pins)."
+              exit 1
+            fi
+            echo "v$VERSION already deployed with identical content — idempotent re-deploy, continuing."
+          fi
 
       - name: Sync site (docs/web → bucket root)
         env:
