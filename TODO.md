@@ -36,7 +36,28 @@
 
 - [ ] Add a render snapshot test using JSDOM to lock in SVG output for fixed timestamps
 - [ ] Storybook-ish demo page in `dev/` for local visual iteration without HA
-- [ ] CI: GitHub Actions running `npm test` and `npm run build`
+- [x] CI: GitHub Actions running `npm test` and `npm run build` (release.yml + deploy-site.yml)
 - [x] Optimize IANA timezone lookup performance via 4-decimal coordinates caching (v0.2.3)
 - [x] Fix out-of-bounds wrapped longitudes in timezone polygon searches (v0.2.3)
 - [x] Retain and preserve custom alpha transparency in Lovelace visual color editor pickers (v0.2.3)
+
+## v0.2.5 (stable)
+
+- [x] Ultrawide / letterbox rendering: night mask, twilight glow, hour band,
+      and TZ boundaries wrap-tile across the seam so they fill displays wider
+      than the 2048×1068 viewBox (fullscreen + wallpaper use cases)
+- [x] Render performance: memoized terminator geometry, rAF-throttled hover,
+      quantized TZ re-projection (0.5° threshold), `<use>`-ref wrap copies
+      instead of duplicated subtrees, non-reactive TZ polygon fields (no
+      double render)
+- [x] Work around WebKit filtered-mask viewport clip (night layer truncating
+      with a hard edge that moved with aspect-fit mode)
+- [x] Coarsen + cap the IANA tz cache (~1 km keys, 512-entry bound) so moving
+      device_trackers can't grow it unbounded
+- [x] Restrict `imageryBase` to http(s)/page-scheme (config can arrive from a
+      URL param on the demo page)
+- [x] Editor: NaN guard on number fields, twilight-color hex normalization,
+      corrected brightness/contrast ranges and entity-fallback help text
+- [x] Short weekday in marker times ("Wed" not "Wednesday")
+- [x] Deploy hygiene: CI enforces ASSET_BASE pins match package.json and
+      refuses to overwrite an immutable versioned path with changed content
