@@ -264,6 +264,14 @@
   </main>
 
   <script type="module">
+    // Shared HEADLESS config plumbing + the demo's CONFIG PANEL.
+    // geoclock-config.js is the same module wallpaper.html imports;
+    // geoclock-webconfig.js is this page's panel and is NOT loaded by
+    // wallpaper.html or bundled into the macOS app — those have their
+    // own controls.
+    import { loadCardBundle } from './geoclock-config.js';
+    import { initWebConfig } from './geoclock-webconfig.js';
+
     // Asset base — single source of truth. Same-origin: HTML and
     // every dist/ asset are served from geoclock.world via the
     // Cloudflare CDN (R2 origin behind the scenes). Bumping the demo
@@ -275,23 +283,25 @@
     // same versioned prefix. No manual imageryBase needed.
     // Must match package.json#version — CI enforces this so the
     // site can't silently keep serving an old bundle after a bump.
-    const ASSET_BASE = '/v0.2.5';
+    const ASSET_BASE = '/v0.2.6';
 
     const stage = document.getElementById('stage');
 
     try {
-      await import(`${ASSET_BASE}/geo-clock-card.js`);
+      await loadCardBundle(ASSET_BASE);
       const card = document.createElement('geo-clock-card');
-      // Defaults across the board. mainTimeSource defaults to 'home',
-      // which falls through to the visitor's device timezone when
-      // hass is not available — so each visitor sees their own clock
-      // without us having to plumb a stub hass object.
-      card.setConfig({ type: 'custom:geo-clock-card' });
       // The fs-btn + error div are siblings inside .stage; appendChild
       // puts the card after them, which is fine — both are positioned
       // (button: absolute, error: hidden) so layout order doesn't
       // affect visuals.
       stage.appendChild(card);
+      // Hand the card to the config panel: it reads the initial
+      // config (URL params > localStorage > defaults), applies it
+      // (mainTimeSource defaults to 'home', which falls through to
+      // the visitor's device timezone with no hass — so each visitor
+      // still sees their own clock), builds the slide-out panel, and
+      // keeps the card + URL in sync as the user edits.
+      initWebConfig(card);
     } catch (err) {
       console.error('geoclock.world: failed to load card bundle', err);
       document.getElementById('stage-error').classList.add('is-visible');

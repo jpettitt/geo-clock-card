@@ -41,6 +41,22 @@
 - [x] Fix out-of-bounds wrapped longitudes in timezone polygon searches (v0.2.3)
 - [x] Retain and preserve custom alpha transparency in Lovelace visual color editor pickers (v0.2.3)
 
+## v0.2.6
+
+- [x] Day/night marker colors (opt-in): per-marker `dayColor`/`nightColor`
+      + card-level `markerDayColor`/`markerNightColor`; each dot recolors
+      live as the terminator crosses its location (matches the wallpaper
+      app). Exposed in the visual editor and YAML. Existing single-color
+      cards unchanged.
+- [x] geoclock.world config panel: slide-out "Customize" — set center
+      (sun / fixed longitude / your location), add markers by place name
+      (Nominatim) or geolocation, day/night marker colors, and toggle the
+      hour band / TZ boundaries / UTC line. Round-trips through readable
+      URL params (History API) for shareable links + opt-in localStorage.
+- [x] Refactor the HA-impedance-matching (expandShortcuts) + mount helpers
+      out of wallpaper.html into a shared headless module
+      (geoclock-config.js) imported by both web pages.
+
 ## v0.2.5 (stable)
 
 - [x] Ultrawide / letterbox rendering: night mask, twilight glow, hour band,
