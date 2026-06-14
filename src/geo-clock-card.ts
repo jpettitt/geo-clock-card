@@ -1,6 +1,7 @@
 import { LitElement, html, css, svg, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { subsolarPoint } from './sun.js';
+import { subsolarPoint, type SubsolarPoint } from './sun.js';
+import { isDaylightAt, pickDayNightColor } from './marker-color.js';
 import { terminatorCurve } from './terminator.js';
 import { polygonToSvgPoints, latLonToPx } from './projection.js';
 import { timezoneBand, BAND_H } from './timezone-band.js';
@@ -446,6 +447,11 @@ export class GeoClockCard extends LitElement {
       // set it so `--geo-marker-color` is the true default. The
       // sanitiser drops anything that isn't a recognised CSS color.
       markerColor: sanitizeCssColor(config.markerColor),
+      // Card-level day/night defaults. Both undefined unless the
+      // user sets them — that's what keeps day/night mode opt-in so
+      // existing single-color cards don't change.
+      markerDayColor: sanitizeCssColor(config.markerDayColor),
+      markerNightColor: sanitizeCssColor(config.markerNightColor),
       markerShowDay: config.markerShowDay ?? true,
       mainTimeSource: pickMainTimeSource(config.mainTimeSource),
       mainTimeEntity: config.mainTimeEntity,
@@ -787,8 +793,14 @@ export class GeoClockCard extends LitElement {
         // sanitizeCssColor returns undefined for anything that doesn't
         // match the safe-color regex, so a malicious entry can't slip
         // a `; url(...)` into the inline style.
-        color:
-          sanitizeCssColor(m.color) ?? this.config.markerColor,
+        color: sanitizeCssColor(m.color) ?? this.config.markerColor,
+        // Same precedence for the day/night colors. When either
+        // resolves, the renderer switches this marker to day/night
+        // mode (picking by sun elevation at its lat/lon).
+        dayColor:
+          sanitizeCssColor(m.dayColor) ?? this.config.markerDayColor,
+        nightColor:
+          sanitizeCssColor(m.nightColor) ?? this.config.markerNightColor,
         lat,
         lon,
         tzid,
@@ -902,6 +914,10 @@ export class GeoClockCard extends LitElement {
     const displayNow = this.config.frozenNow ?? this.displayNow;
 
     const centerLon = this.resolveCenterLon(mapNow);
+    // Subsolar point for this frame — drives day/night marker color
+    // selection. Computed from mapNow so a marker flips exactly as
+    // the rendered terminator (also mapNow-based) sweeps over it.
+    const sub = subsolarPoint(mapNow);
     const { points, curvePoints } = this.terminatorGeometry(
       mapNow,
       centerLon,
@@ -1171,6 +1187,7 @@ export class GeoClockCard extends LitElement {
               centerLon,
               yMin,
               totalH,
+              sub,
             )
           : ''}
         <div class="readout">
@@ -1373,6 +1390,7 @@ export class GeoClockCard extends LitElement {
     centerLon: number,
     yMin: number,
     totalH: number,
+    sub: SubsolarPoint,
   ) {
     if (!this.config) return '';
     const mode = this.config.markerLabelMode;
@@ -1384,12 +1402,18 @@ export class GeoClockCard extends LitElement {
         ? formatMarkerTime(displayNow, m.tzid, this.config!.markerShowDay)
         : '';
       const isActive = this.hoveredMarker?.entity === m.entity;
-      // When color is undefined we deliberately omit the inline
-      // background so the `.marker-halo` / `.marker-dot` CSS rules
-      // can fall through to var(--geo-marker-color) — that's the
-      // theme-override path for users who'd rather restyle than
-      // configure each card.
-      const fillStyle = m.color ? `background: ${m.color};` : '';
+      // Day/night color when either is set (recolors live as the
+      // terminator passes), else the single `color`. When the final
+      // fill is undefined we omit the inline background so the
+      // `.marker-halo` / `.marker-dot` CSS rules fall through to
+      // var(--geo-marker-color) — the theme-override path.
+      const fill =
+        pickDayNightColor(
+          m.dayColor,
+          m.nightColor,
+          isDaylightAt(m.lat, m.lon, sub),
+        ) ?? m.color;
+      const fillStyle = fill ? `background: ${fill};` : '';
       return html`
         <div
           class="marker${isActive ? ' is-active' : ''}"
@@ -1737,6 +1761,11 @@ interface ResolvedMarker {
   entity: string;
   label: string;
   color: string | undefined;
+  /** Resolved day/night colors (per-marker > card-level, sanitized).
+   *  When either is defined the renderer flips the dot live with the
+   *  terminator; when both are undefined it falls back to `color`. */
+  dayColor: string | undefined;
+  nightColor: string | undefined;
   lat: number;
   lon: number;
   tzid: string | null;
@@ -1762,6 +1791,9 @@ function sanitizeMarkers(
           ? raw.label
           : undefined,
       color: typeof raw.color === 'string' ? raw.color : undefined,
+      dayColor: typeof raw.dayColor === 'string' ? raw.dayColor : undefined,
+      nightColor:
+        typeof raw.nightColor === 'string' ? raw.nightColor : undefined,
     });
   }
   return out;

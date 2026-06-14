@@ -283,10 +283,14 @@ export class GeoClockCardEditor extends LitElement {
     };
   }
 
-  private patchMarkerColor(index: number, oldColor: string | undefined) {
+  private patchMarkerColor(
+    index: number,
+    field: 'color' | 'dayColor' | 'nightColor',
+    oldColor: string | undefined,
+  ) {
     return (e: Event) => {
       const v = (e.target as HTMLInputElement).value;
-      this.patchMarker(index, { color: this.applyAlpha(v, oldColor) });
+      this.patchMarker(index, { [field]: this.applyAlpha(v, oldColor) });
     };
   }
 
@@ -608,6 +612,28 @@ export class GeoClockCardEditor extends LitElement {
               @change=${this.colorField('markerColor')}
             />
           </div>
+          <!-- Day/night marker colors: setting either turns on
+               day/night mode for ALL markers (each dot recolors as
+               the terminator crosses it). Leave both blank for the
+               single default-color behavior above. -->
+          <div class="color-row">
+            <label for="marker-day-color">Day color (optional)</label>
+            <input
+              id="marker-day-color"
+              type="color"
+              .value=${this.colorAsHex(c.markerDayColor, '#ff9933')}
+              @change=${this.colorField('markerDayColor')}
+            />
+          </div>
+          <div class="color-row">
+            <label for="marker-night-color">Night color (optional)</label>
+            <input
+              id="marker-night-color"
+              type="color"
+              .value=${this.colorAsHex(c.markerNightColor, '#3da9fc')}
+              @change=${this.colorField('markerNightColor')}
+            />
+          </div>
 
           ${(c.markers ?? []).map(
             (m, i) => html`
@@ -644,7 +670,35 @@ export class GeoClockCardEditor extends LitElement {
                       m.color,
                       this.colorAsHex(c.markerColor, '#3da9fc'),
                     )}
-                    @change=${this.patchMarkerColor(i, m.color)}
+                    @change=${this.patchMarkerColor(i, 'color', m.color)}
+                  />
+                </div>
+                <div class="color-row">
+                  <label for="marker-day-${i}">Day color (optional)</label>
+                  <input
+                    id="marker-day-${i}"
+                    type="color"
+                    .value=${this.colorAsHex(
+                      m.dayColor,
+                      this.colorAsHex(c.markerDayColor, '#ff9933'),
+                    )}
+                    @change=${this.patchMarkerColor(i, 'dayColor', m.dayColor)}
+                  />
+                </div>
+                <div class="color-row">
+                  <label for="marker-night-${i}">Night color (optional)</label>
+                  <input
+                    id="marker-night-${i}"
+                    type="color"
+                    .value=${this.colorAsHex(
+                      m.nightColor,
+                      this.colorAsHex(c.markerNightColor, '#3da9fc'),
+                    )}
+                    @change=${this.patchMarkerColor(
+                      i,
+                      'nightColor',
+                      m.nightColor,
+                    )}
                   />
                 </div>
               </div>

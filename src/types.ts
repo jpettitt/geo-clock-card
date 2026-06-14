@@ -60,8 +60,20 @@ export interface MarkerConfig {
   /** Optional dot color for this marker. Any CSS color string the
    *  card's `sanitizeCssColor` accepts (hex / rgb[a] / hsl[a] /
    *  named). Falls back to the card-level `markerColor`, then to
-   *  the `--geo-marker-color` CSS variable. */
+   *  the `--geo-marker-color` CSS variable. Used only when neither
+   *  day/night color resolves (see `dayColor`). */
   color?: string;
+  /** Optional dot color used while the marker's location is in
+   *  daylight (sun above the horizon). When this OR `nightColor`
+   *  resolves (per-marker here, or the card-level
+   *  `markerDayColor` / `markerNightColor`), the marker switches to
+   *  day/night mode and its dot recolors live as the terminator
+   *  passes — matching the desktop wallpaper app. When neither
+   *  resolves, the marker stays the single `color` above. */
+  dayColor?: string;
+  /** Optional dot color used while the marker's location is in
+   *  night (sun below the horizon). See `dayColor`. */
+  nightColor?: string;
 }
 
 export interface GeoClockCardConfig {
@@ -135,8 +147,18 @@ export interface GeoClockCardConfig {
   /** How marker labels + times are shown. Default 'always'. */
   markerLabelMode?: MarkerLabelMode;
   /** Default fill color for markers that don't override `color`.
-   *  Any CSS color string. Default '#3da9fc'. */
+   *  Any CSS color string. Default '#3da9fc'. Used only when
+   *  day/night colors are not in play. */
   markerColor?: string;
+  /** Card-level default day-side marker color. Setting this (or
+   *  `markerNightColor`) opts ALL markers into day/night mode:
+   *  each dot recolors live as the sun crosses its location.
+   *  Per-marker `dayColor` overrides it. Unset by default, so
+   *  existing single-color cards are unchanged. */
+  markerDayColor?: string;
+  /** Card-level default night-side marker color. See
+   *  `markerDayColor`. */
+  markerNightColor?: string;
   /** Append the weekday (locale-aware) after each marker's time
    *  display — e.g. `12:22 PM Friday`. Helpful when markers in
    *  far-away zones have rolled over to a different calendar day.
@@ -174,6 +196,12 @@ export interface ResolvedConfig {
    *  `--geo-marker-color` CSS variable decide" so HA themes can
    *  restyle without touching card config. */
   markerColor: string | undefined;
+  /** Card-level resolved day/night marker colors. `undefined` for
+   *  either means day/night mode isn't enabled at the card level
+   *  (a per-marker dayColor/nightColor can still enable it for
+   *  that marker). */
+  markerDayColor: string | undefined;
+  markerNightColor: string | undefined;
   markerShowDay: boolean;
   mainTimeSource: MainTimeSource;
   mainTimeEntity?: string;
