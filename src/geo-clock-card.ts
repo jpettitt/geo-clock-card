@@ -1008,6 +1008,11 @@ export class GeoClockCard extends LitElement {
 
     const frameStyle =
       `aspect-ratio: ${MAP_W} / ${totalH};` +
+      // Numeric aspect ratio (unitless) so the web page's fullscreen
+      // letterbox can size the frame to FIT the viewport — see
+      // setCardFullBleed() in index.html. Updates with the band toggle
+      // (totalH changes), so the letterbox stays exact either way.
+      ` --geo-frame-ar: ${(MAP_W / totalH).toFixed(6)};` +
       ` --geo-day-brightness: ${this.config.dayBrightness};` +
       ` --geo-night-contrast: ${this.config.nightContrast};` +
       ` --geo-twilight-color: ${this.config.twilightColor};` +

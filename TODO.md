@@ -41,6 +41,16 @@
 - [x] Fix out-of-bounds wrapped longitudes in timezone polygon searches (v0.2.3)
 - [x] Retain and preserve custom alpha transparency in Lovelace visual color editor pickers (v0.2.3)
 
+## v0.2.8
+
+- [x] Web demo fullscreen now LETTERBOXES instead of cropping to
+      full-bleed. The markers are an HTML overlay positioned by
+      percentage of the frame, which only aligns with the SVG map when
+      the frame keeps the viewBox aspect ratio; the old slice/crop path
+      made markers drift. The card publishes its aspect ratio as
+      `--geo-frame-ar` so `setCardFullBleed()` can fit the frame to the
+      viewport (`min(100vh, 100vw / AR)`), centered with black bars.
+
 ## v0.2.7
 
 - [x] Split the timezone overlay into two independently-toggleable layers:

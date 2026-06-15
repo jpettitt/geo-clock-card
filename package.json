@@ -1,6 +1,6 @@
 {
   "name": "geo-clock-card",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Home Assistant Lovelace card with a live world day/night terminator using NASA Blue/Black Marble imagery.",
   "type": "module",
   "main": "dist/geo-clock-card.js",
