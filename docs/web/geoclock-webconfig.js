@@ -115,8 +115,21 @@ function markerToStr(m) {
   return s;
 }
 
-function configFromUrl(search = location.search) {
-  const p = new URLSearchParams(search);
+// Config lives in the URL HASH FRAGMENT (#…), not the query string.
+// The fragment is never sent to the server, which:
+//   - avoids Cloudflare's request-URL length limit (a long marker
+//     list in the query string returned a 404 from the CDN),
+//   - keeps marker locations out of CDN access logs (privacy).
+// We still READ a legacy query string as a fallback so any links
+// shared before this change keep working; they get rewritten to the
+// hash form on load.
+function paramSource() {
+  const h = location.hash.replace(/^#/, '');
+  return h || location.search.replace(/^\?/, '');
+}
+
+function configFromUrl(src = paramSource()) {
+  const p = new URLSearchParams(src);
   const cfg = { ...DEFAULTS, markers: [] };
   const c = p.get('center');
   if (c === 'lon' || c === 'me') cfg.center = c;
@@ -147,11 +160,12 @@ function urlFromConfig(cfg) {
   if (cfg.markerNight !== DEF_MARKER_NIGHT) p.set('mnight', cfg.markerNight);
   for (const m of cfg.markers) p.append('marker', markerToStr(m));
   const qs = p.toString();
-  return qs ? `${location.pathname}?${qs}` : location.pathname;
+  // Always pathname (drop any legacy query string) + hash fragment.
+  return qs ? `${location.pathname}#${qs}` : location.pathname;
 }
 
-function hasUrlConfig(search = location.search) {
-  const p = new URLSearchParams(search);
+function hasUrlConfig(src = paramSource()) {
+  const p = new URLSearchParams(src);
   return (
     p.has('center') ||
     p.has('lon') ||
