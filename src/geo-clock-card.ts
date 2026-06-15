@@ -246,6 +246,16 @@ export class GeoClockCard extends LitElement {
     .tz-region:hover {
       fill: rgba(255, 255, 255, 0.05);
     }
+    /* Bands shown as pure chrome (showTimezoneRegions on, hover/popup
+       off): no hit-testing, no hover tint. This compound selector
+       outranks the bare .tz-region pointer-events rule above, which a
+       presentation attribute alone would NOT (CSS beats attributes). */
+    .tz-region.is-inert {
+      pointer-events: none;
+    }
+    .tz-region.is-inert:hover {
+      fill: rgba(255, 255, 255, 0);
+    }
     /* Invisible IANA hit-test layer — tagged with each region's IANA
        tzid so the popup can ask Intl.DateTimeFormat for DST-aware
        local time. Faint tint on hover gives visual feedback that
@@ -423,6 +433,12 @@ export class GeoClockCard extends LitElement {
       showUTC: config.showUTC ?? true,
       showTimezoneBand: config.showTimezoneBand ?? true,
       showTimezoneBoundaries: config.showTimezoneBoundaries ?? true,
+      // Vertical offset bands default to the boundaries flag so existing
+      // configs (and the HA editor, which only exposes boundaries) behave
+      // exactly as before. The web demo sets it independently to group the
+      // bands with the hour band.
+      showTimezoneRegions:
+        config.showTimezoneRegions ?? config.showTimezoneBoundaries ?? true,
       showTimezonePopup: config.showTimezonePopup ?? true,
       timezoneLineColor:
         sanitizeCssColor(config.timezoneLineColor) ??
@@ -488,6 +504,7 @@ export class GeoClockCard extends LitElement {
     super.disconnectedCallback();
     this.stopTimer();
     this.clearDismissTimer();
+    this.clearIdleTimer();
     this.detachVisibilityObservers();
     if (this.hoverPosRaf) {
       cancelAnimationFrame(this.hoverPosRaf);
@@ -567,7 +584,9 @@ export class GeoClockCard extends LitElement {
   }
 
   private maybeLoadTimezones(): void {
-    if (!this.config?.showTimezoneBoundaries || this.tzData !== null) return;
+    // tzData feeds the vertical offset bands, gated on showTimezoneRegions
+    // (the IANA hover layer loads separately in maybeLoadIanaTimezones).
+    if (!this.config?.showTimezoneRegions || this.tzData !== null) return;
     const url = this.config.imageryBase + TZ_DATA;
     loadTimezones(url)
       .then((data) => {
@@ -955,7 +974,9 @@ export class GeoClockCard extends LitElement {
     // earlier layer was recorded against so both stay aligned with
     // each other and with the shared drift translate.
     let tzDriftPx = 0;
-    if (this.config.showTimezoneBoundaries) {
+    // Project whenever either layer is shown: the bands key on
+    // showTimezoneRegions, the IANA hover layer on showTimezoneBoundaries.
+    if (this.config.showTimezoneRegions || this.config.showTimezoneBoundaries) {
       const recorded = this.tzPolygonsCenterLon;
       const needsRebuild =
         recorded === null || Math.abs(recorded - centerLon) > TZ_REBUILD_DEG;
@@ -1129,15 +1150,23 @@ export class GeoClockCard extends LitElement {
                the wrap copies, which is correct — it IS the same
                zone). The outer translate absorbs sub-threshold
                centerLon drift (see tzDriftPx above). -->
-          ${this.tzPolygons && this.config.showTimezoneBoundaries
+          ${this.tzPolygons && this.config.showTimezoneRegions
             ? svg`
                 <g transform="translate(${tzDriftPx} 0)">
                   <g id="tz-offset-layer">
-                    ${this.tzPolygons.map(
-                      (p) => svg`<path class="tz-region" d="${p.d}"
+                    ${this.tzPolygons.map((p) =>
+                      // The bands carry their hover popup only when the
+                      // hover/popup feature (showTimezoneBoundaries) is on.
+                      // The demo can show the bands as pure chrome (band
+                      // toggle) while the popup rides the timezone toggle.
+                      // (Optional chain: TS can't narrow this.config inside
+                      // this nested map closure even though render guards it.)
+                      this.config?.showTimezoneBoundaries
+                        ? svg`<path class="tz-region" d="${p.d}"
                                        @pointerenter=${(e: PointerEvent) => this.onOffsetEnter(e, p)}
                                        @pointermove=${this.onZoneMove}
-                                       @pointerleave=${this.onOffsetLeave}/>`,
+                                       @pointerleave=${this.onOffsetLeave}/>`
+                        : svg`<path class="tz-region is-inert" d="${p.d}"/>`,
                     )}
                   </g>
                   <use href="#tz-offset-layer" x="${-MAP_W}" pointer-events="none"/>
@@ -1225,11 +1254,41 @@ export class GeoClockCard extends LitElement {
   private dismissTimer?: ReturnType<typeof setTimeout>;
   private static readonly TOUCH_DISMISS_MS = 2500;
 
+  // Mouse-idle auto-dismiss. A cursor parked over a zone never fires a
+  // pointerleave, so a hover popup would otherwise stay up forever. We
+  // re-arm this on every pointer move (via updateHoverPos) and clear the
+  // popup after HOVER_IDLE_MS of stillness. Separate from dismissTimer
+  // (touch) so the two can't clobber each other.
+  private idleTimer?: ReturnType<typeof setTimeout>;
+  private static readonly HOVER_IDLE_MS = 30_000;
+
   private clearDismissTimer(): void {
     if (this.dismissTimer !== undefined) {
       clearTimeout(this.dismissTimer);
       this.dismissTimer = undefined;
     }
+  }
+
+  private clearIdleTimer(): void {
+    if (this.idleTimer !== undefined) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = undefined;
+    }
+  }
+
+  private armIdleDismiss(): void {
+    this.clearIdleTimer();
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = undefined;
+      this.hoveredIana = null;
+      this.hoveredOffset = null;
+      this.hoveredMarker = null;
+      this.hoverPos = null;
+      // Cursor is still parked over the zone, so no pointerenter fires
+      // until the user crosses into another zone (or leaves and returns),
+      // at which point the popup reappears. That's the intended "moved
+      // again → show again" behavior.
+    }, GeoClockCard.HOVER_IDLE_MS);
   }
 
   private onIanaEnter = (e: PointerEvent, p: IanaPolygon): void => {
@@ -1291,6 +1350,9 @@ export class GeoClockCard extends LitElement {
   }
 
   private updateHoverPos(e: MouseEvent): void {
+    // Restart the mouse-idle dismiss on every move. Touch popups have
+    // their own shorter dismiss path (armTouchAutoDismiss), so skip them.
+    if ((e as PointerEvent).pointerType !== 'touch') this.armIdleDismiss();
     const frame = (e.currentTarget as Element).closest('.frame');
     if (!frame) return;
     const r = frame.getBoundingClientRect();

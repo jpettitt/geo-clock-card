@@ -117,6 +117,12 @@ export interface GeoClockCardConfig {
   /** Show the time-zone overlay (offset bands + IANA polygons).
    *  Default true. */
   showTimezoneBoundaries?: boolean;
+  /** Show the colored vertical UTC-offset bands. Defaults to
+   *  `showTimezoneBoundaries` so existing configs are unchanged, but
+   *  can be set independently — the geoclock.world demo groups these
+   *  visual bands with the hour band and reserves
+   *  `showTimezoneBoundaries` for the interactive hover popup. */
+  showTimezoneRegions?: boolean;
   /** Show the hover popup with live time at the pointed-to zone.
    *  Default true. (Independent of `showTimezoneBoundaries` — you
    *  can have visible bands without popups, or vice versa.) */
@@ -178,6 +184,7 @@ export interface ResolvedConfig {
   showUTC: boolean;
   showTimezoneBand: boolean;
   showTimezoneBoundaries: boolean;
+  showTimezoneRegions: boolean;
   showTimezonePopup: boolean;
   timezoneLineColor: string;
   dayBrightness: number;

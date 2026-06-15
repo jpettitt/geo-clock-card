@@ -38,8 +38,8 @@ const DEF_MARKER_NIGHT = '#3da9fc';
 const DEFAULTS = {
   center: 'sun', // 'sun' | 'lon'
   lon: 0, // used when center === 'lon'
-  band: true, // hour band
-  tz: true, // time-zone boundaries
+  band: true, // hour-number strip + vertical UTC-offset bands
+  tz: true, // time-zone hover/identify popup
   utc: true, // UTC line under the clock
   markerDay: DEF_MARKER_DAY, // global day-side marker color
   markerNight: DEF_MARKER_NIGHT, // global night-side marker color
@@ -192,7 +192,12 @@ let myLocation = null;
 
 function cardConfigFromWeb(cfg) {
   const cc = {
+    // The "hour band" toggle groups the visual chrome: the hour-number
+    // strip AND the colored vertical UTC-offset bands. The "timezone"
+    // toggle is reserved for the interactive hover-to-identify popup
+    // (showTimezoneBoundaries gates the IANA hit layer that feeds it).
     showTimezoneBand: cfg.band,
+    showTimezoneRegions: cfg.band,
     showTimezoneBoundaries: cfg.tz,
     showUTC: cfg.utc,
     // Global day/night marker colors — always set from this panel,
@@ -371,6 +376,16 @@ const PANEL_CSS = `
   backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
 }
 .gcw-toggle:hover { background: rgba(8,14,28,0.85); border-color: rgba(255,255,255,0.32); }
+/* The panel can't overlay the card in fullscreen: the slide-out lives in
+   <body> (a non-descendant of the fullscreen .stage, so the browser won't
+   paint it during native fullscreen), and in pseudo-fullscreen it would
+   float over hidden page chrome. Hide both entry points — the Customize
+   button (inside .stage) and the panel — whenever any fullscreen mode is
+   active: native :fullscreen, the WebKit prefix, or our pseudo-fs class. */
+.stage:fullscreen .gcw-toggle,
+.stage:-webkit-full-screen .gcw-toggle,
+body.pseudo-fs .gcw-toggle,
+body.pseudo-fs .gcw-panel { display: none; }
 .gcw-panel {
   position: fixed;
   top: 0; right: 0; bottom: 0;
@@ -741,8 +756,8 @@ export function initWebConfig(card) {
     },
   });
 
-  const bandRow = mkToggle('band', 'Hour band');
-  const tzRow = mkToggle('tz', 'Time-zone boundaries');
+  const bandRow = mkToggle('band', 'Hour & zone bands');
+  const tzRow = mkToggle('tz', 'Time-zone hover');
   const utcRow = mkToggle('utc', 'UTC line');
   const syncToggles = () => {
     bandRow.querySelector('input').checked = cfg.band;

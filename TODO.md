@@ -41,6 +41,20 @@
 - [x] Fix out-of-bounds wrapped longitudes in timezone polygon searches (v0.2.3)
 - [x] Retain and preserve custom alpha transparency in Lovelace visual color editor pickers (v0.2.3)
 
+## v0.2.7
+
+- [x] Split the timezone overlay into two independently-toggleable layers:
+      new `showTimezoneRegions` flag controls the colored vertical offset
+      bands; `showTimezoneBoundaries` now gates only the IANA hover/identify
+      popup. `showTimezoneRegions` defaults to `showTimezoneBoundaries`, so
+      existing HA configs and the visual editor are unchanged. The
+      geoclock.world demo groups the bands with the hour band ("Hour & zone
+      bands" toggle) and reserves the timezone toggle for the popup.
+- [x] Hover popups self-dismiss after 30s of no pointer movement (a parked
+      cursor never fires pointerleave, so the popup would otherwise stick).
+- [x] Hide the demo's Customize button + slide-out panel in fullscreen
+      (the panel lives outside the fullscreen `.stage` and can't overlay it).
+
 ## v0.2.6
 
 - [x] Day/night marker colors (opt-in): per-marker `dayColor`/`nightColor`

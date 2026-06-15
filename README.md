@@ -174,7 +174,10 @@ markerShowDay: true         # append weekday after the time (e.g. "12:22 PM Frid
 
 # Overlays
 showTimezoneBand: true      # hour-of-day numbers across the top
-showTimezoneBoundaries: true # 15° offset rectangle bands + IANA polygons
+showTimezoneBoundaries: true # IANA hover/identify popup hit layer
+showTimezoneRegions: true   # 15° offset rectangle bands (defaults to
+                            # showTimezoneBoundaries; set independently to
+                            # show the bands as chrome without the popup)
 showTimezonePopup: true     # live-time popup on hover/tap
 showUTC: true               # UTC time below the local clock
 
