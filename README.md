@@ -181,6 +181,13 @@ showTimezoneRegions: true   # 15° offset rectangle bands (defaults to
 showTimezonePopup: true     # live-time popup on hover/tap
 showUTC: true               # UTC time below the local clock
 
+# Localization (optional; defaults to the browser/runtime locale)
+locale: ""                  # BCP-47 tag, e.g. "fr-FR" or "ja-JP".
+                            # Governs the popup's localized timezone
+                            # name, the clock readout, marker times, and
+                            # the 12/24-hour choice. Empty = follow the
+                            # viewer's browser language.
+
 # Bundle resolution (rarely needed; not exposed in the visual editor)
 imageryBase: ""             # override the assets URL (e.g. host on a CDN)
 ```

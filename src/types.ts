@@ -176,6 +176,11 @@ export interface GeoClockCardConfig {
   /** Used when `mainTimeSource: 'entity'`. Entity ID with
    *  `latitude`/`longitude` attributes. */
   mainTimeEntity?: string;
+  /** BCP-47 locale for all date/time/zone-name formatting (e.g.
+   *  'fr-FR', 'ja-JP'). Unset = follow the browser/runtime locale.
+   *  Governs the popup's localized timezone name, the clock readout,
+   *  marker times, and 12/24-hour choice. */
+  locale?: string;
 }
 
 export interface ResolvedConfig {
@@ -210,6 +215,9 @@ export interface ResolvedConfig {
   markerDayColor: string | undefined;
   markerNightColor: string | undefined;
   markerShowDay: boolean;
+  /** BCP-47 locale for all formatting, or `undefined` to follow the
+   *  browser/runtime default. */
+  locale?: string;
   mainTimeSource: MainTimeSource;
   mainTimeEntity?: string;
   /** When set, the clock is frozen at this Date and the timer is disabled. */

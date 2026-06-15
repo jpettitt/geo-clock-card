@@ -41,6 +41,16 @@
 - [x] Fix out-of-bounds wrapped longitudes in timezone polygon searches (v0.2.3)
 - [x] Retain and preserve custom alpha transparency in Lovelace visual color editor pickers (v0.2.3)
 
+## v0.2.9
+
+- [x] Localized timezone names + new `locale` config option. The long
+      zone-name formatter no longer hardcodes en-US, so the hover popup's
+      timezone name localizes (e.g. "heure d'été du Pacifique" under fr).
+      The optional `locale` (BCP-47) overrides the browser default and is
+      threaded through every formatter — popup name, clock readout, marker
+      times, offset-band fallback — so a set locale is consistent. Unset =
+      follow the viewer's browser language. YAML-only (not in the editor).
+
 ## v0.2.8
 
 - [x] Web demo fullscreen now LETTERBOXES instead of cropping to

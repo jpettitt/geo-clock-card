@@ -246,14 +246,17 @@ function formatters(tzid: string, locale?: string | string[]): FormatterSet {
         month: 'short',
         day: 'numeric',
       }),
-      // Long zone-name formatter: we still ask for time + name so
-      // formatToParts gives us the timeZoneName part; the locale
-      // here doesn't materially change what we extract.
-      zoneName: new Intl.DateTimeFormat('en-US', {
+      // Long zone-name formatter — uses the caller's locale so the
+      // extracted timeZoneName part is localized (e.g. "heure d'été
+      // du Pacifique" under fr). undefined → browser/runtime default.
+      zoneName: new Intl.DateTimeFormat(locale, {
         timeZone: tzid,
         hour: 'numeric',
         timeZoneName: 'long',
       }),
+      // Offset stays pinned to en-US: we extract "GMT-07:00" and
+      // rewrite the GMT prefix to UTC downstream, which a localized
+      // prefix would defeat. The numeric offset is language-neutral.
       offset: new Intl.DateTimeFormat('en-US', {
         timeZone: tzid,
         timeZoneName: 'longOffset',

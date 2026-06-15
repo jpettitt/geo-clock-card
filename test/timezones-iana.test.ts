@@ -138,6 +138,20 @@ describe('zoneNow', () => {
     expect(r.time).toMatch(/2:00:00\s?PM/);
   });
 
+  it('localizes the zone NAME by locale (not pinned to English)', () => {
+    // Regression guard: the long zone-name formatter once hardcoded
+    // en-US, so the popup name never localized. Assert it differs from
+    // English and reads as French rather than pinning an exact CLDR
+    // string (those shift across ICU versions). Requires full-ICU Node
+    // (the CI/runtime default since Node 18).
+    const d = new Date('2024-07-15T18:00:00Z');
+    const en = zoneNow(d, 'America/Los_Angeles', 'en-US').name;
+    const fr = zoneNow(d, 'America/Los_Angeles', 'fr-FR').name;
+    expect(en).toMatch(/Pacific/);
+    expect(fr).not.toBe(en);
+    expect(fr).toMatch(/Pacifique/);
+  });
+
   it('handles fractional offsets like India (UTC+05:30, no DST)', () => {
     const r = zoneNow(new Date('2024-07-15T12:00:00Z'), 'Asia/Kolkata', LOC);
     expect(r.time).toBe('17:30:00');

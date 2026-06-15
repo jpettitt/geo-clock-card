@@ -471,6 +471,9 @@ export class GeoClockCard extends LitElement {
       markerShowDay: config.markerShowDay ?? true,
       mainTimeSource: pickMainTimeSource(config.mainTimeSource),
       mainTimeEntity: config.mainTimeEntity,
+      // Empty string would make Intl throw a RangeError, so coerce it
+      // (and any falsy) to undefined → browser/runtime default locale.
+      locale: config.locale || undefined,
       frozenNow,
     };
     // Pin or release the clocks based on the frozen setting.
@@ -997,9 +1000,9 @@ export class GeoClockCard extends LitElement {
     }
 
     const mainTz = this.resolveMainTimezone();
-    const localTime = formatLocalTime(displayNow, mainTz);
+    const localTime = formatLocalTime(displayNow, mainTz, this.config.locale);
     const utcTime = formatUtcTime(displayNow);
-    const dateStr = formatDate(displayNow, mainTz);
+    const dateStr = formatDate(displayNow, mainTz, this.config.locale);
     const markers = this.resolveMarkers();
 
     const showBand = this.config.showTimezoneBand;
@@ -1401,7 +1404,7 @@ export class GeoClockCard extends LitElement {
         ? this.hass.config.location_name
         : 'Home';
     const time = tz
-      ? formatMarkerTime(displayNow, tz, this.config.markerShowDay)
+      ? formatMarkerTime(displayNow, tz, this.config.markerShowDay, this.config.locale)
       : '';
     return html`
       <div
@@ -1466,7 +1469,7 @@ export class GeoClockCard extends LitElement {
       const leftPct = (x / MAP_W) * 100;
       const topPct = ((y - yMin) / totalH) * 100;
       const time = m.tzid
-        ? formatMarkerTime(displayNow, m.tzid, this.config!.markerShowDay)
+        ? formatMarkerTime(displayNow, m.tzid, this.config!.markerShowDay, this.config!.locale)
         : '';
       const isActive = this.hoveredMarker?.entity === m.entity;
       // Day/night color when either is set (recolors live as the
@@ -1580,7 +1583,7 @@ export class GeoClockCard extends LitElement {
     if (this.hoveredMarker) {
       const m = this.hoveredMarker;
       if (m.tzid) {
-        const live = zoneNow(displayNow, m.tzid);
+        const live = zoneNow(displayNow, m.tzid, this.config?.locale);
         return html`
           <div class="tz-popup" style=${style}>
             <div class="tz-popup-time">${live.time}</div>
@@ -1603,7 +1606,7 @@ export class GeoClockCard extends LitElement {
     // polygon coverage.
     if (this.hoveredIana) {
       const z = this.hoveredIana;
-      const live = zoneNow(displayNow, z.tzid);
+      const live = zoneNow(displayNow, z.tzid, this.config?.locale);
       return html`
         <div class="tz-popup" style=${style}>
           <div class="tz-popup-time">${live.time}</div>
@@ -1616,7 +1619,7 @@ export class GeoClockCard extends LitElement {
     }
     if (this.hoveredOffset) {
       const z = this.hoveredOffset;
-      const live = atOffset(displayNow, z.offset);
+      const live = atOffset(displayNow, z.offset, this.config?.locale);
       return html`
         <div class="tz-popup" style=${style}>
           <div class="tz-popup-time">${live.time}</div>
@@ -1643,15 +1646,16 @@ export class GeoClockCard extends LitElement {
 function atOffset(
   now: Date,
   offsetHours: number,
+  locale?: string,
 ): { time: string; date: string } {
   const shifted = new Date(now.getTime() + offsetHours * 3_600_000);
-  const time = new Intl.DateTimeFormat(undefined, {
+  const time = new Intl.DateTimeFormat(locale, {
     timeZone: 'UTC',
     hour: 'numeric',
     minute: '2-digit',
     second: '2-digit',
   }).format(shifted);
-  const date = new Intl.DateTimeFormat(undefined, {
+  const date = new Intl.DateTimeFormat(locale, {
     timeZone: 'UTC',
     weekday: 'short',
     month: 'short',
@@ -1768,13 +1772,18 @@ function sanitizeCssColor(input: string | undefined): string | undefined {
  * Intl puts the weekday first in most locales ("Friday, 12:22 PM"),
  * and on a marker label readers want to scan time first, day second.
  */
-function formatMarkerTime(d: Date, tz: string | undefined, withDay: boolean): string {
+function formatMarkerTime(
+  d: Date,
+  tz: string | undefined,
+  withDay: boolean,
+  locale?: string,
+): string {
   const opts: Intl.DateTimeFormatOptions = {
     hour: 'numeric',
     minute: '2-digit',
     ...(tz ? { timeZone: tz } : {}),
   };
-  const time = new Intl.DateTimeFormat(undefined, opts).format(d);
+  const time = new Intl.DateTimeFormat(locale, opts).format(d);
   if (!withDay) return time;
   // Short weekday ("Wed" / "mié.") rather than long ("Wednesday")
   // — marker labels stay narrow enough to fit under the dot at
@@ -1784,15 +1793,15 @@ function formatMarkerTime(d: Date, tz: string | undefined, withDay: boolean): st
     weekday: 'short',
     ...(tz ? { timeZone: tz } : {}),
   };
-  const day = new Intl.DateTimeFormat(undefined, dayOpts).format(d);
+  const day = new Intl.DateTimeFormat(locale, dayOpts).format(d);
   return `${time} ${day}`;
 }
 
-function formatLocalTime(d: Date, tz?: string): string {
+function formatLocalTime(d: Date, tz?: string, locale?: string): string {
   // When a tz is supplied, the readout shows that zone's wall time
   // (DST-aware via Intl). Without one we fall through to the
   // browser's default zone — Pre-0.2.0 behavior.
-  return d.toLocaleTimeString(undefined, {
+  return d.toLocaleTimeString(locale, {
     hour: 'numeric',
     minute: '2-digit',
     second: '2-digit',
@@ -1808,8 +1817,8 @@ function formatUtcTime(d: Date): string {
   return `${hh}:${mm}:${ss} UTC`;
 }
 
-function formatDate(d: Date, tz?: string): string {
-  return d.toLocaleDateString(undefined, {
+function formatDate(d: Date, tz?: string, locale?: string): string {
+  return d.toLocaleDateString(locale, {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
