@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GeoClock — Privacy Policy</title>
+  <meta name="description" content="Privacy policy for the GeoClock New Tab Chrome extension and geoclock.world. No accounts, no tracking, no data sent to us — everything runs in your browser.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <style>
+    :root {
+      --bg: #0c1118;
+      --fg: #e6e9ef;
+      --muted: #9aa3b0;
+      --accent: #ff7a3d;
+      --link: #6ab0ff;
+    }
+    html { box-sizing: border-box; }
+    *, *::before, *::after { box-sizing: inherit; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+        system-ui, sans-serif;
+      line-height: 1.6;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 3rem 1.25rem 5rem;
+    }
+    h1 { font-size: 1.9rem; margin: 0 0 0.25rem; }
+    h2 { font-size: 1.2rem; margin: 2rem 0 0.5rem; }
+    .updated { color: var(--muted); font-size: 0.9rem; margin-bottom: 2rem; }
+    .lede {
+      border-left: 3px solid var(--accent);
+      padding: 0.6rem 0 0.6rem 1rem;
+      color: var(--fg);
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 0 6px 6px 0;
+    }
+    a { color: var(--link); }
+    code {
+      background: rgba(255, 255, 255, 0.08);
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+    .muted { color: var(--muted); }
+    ul { padding-left: 1.2rem; }
+    li { margin: 0.3rem 0; }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>GeoClock — Privacy Policy</h1>
+    <p class="updated">Last updated: 16 June 2026</p>
+
+    <p class="lede">
+      <strong>The short version:</strong> GeoClock has no accounts, no
+      analytics, no trackers, and no servers of our own. We never collect,
+      receive, store, or sell your data. Everything runs locally in your
+      browser. This policy covers the <em>GeoClock New Tab</em> Chrome
+      extension and the <a href="https://geoclock.world">geoclock.world</a>
+      website.
+    </p>
+
+    <h2>What we collect</h2>
+    <p>
+      Nothing. GeoClock has no back-end that receives information about
+      you. We do not use cookies for tracking, advertising identifiers,
+      fingerprinting, or third-party analytics.
+    </p>
+
+    <h2>Settings stored on your device</h2>
+    <p>
+      Your preferences — map center, location markers, day/night marker
+      colors, language/locale, and the hour-band / timezone / UTC toggles
+      — are saved in your browser's local storage
+      (<code>localStorage</code>) so they persist across new tabs. This
+      data stays on your device, is never transmitted anywhere, and you
+      can clear it at any time by resetting the settings in the Customize
+      panel or clearing the extension's site data.
+    </p>
+
+    <h2>Your location</h2>
+    <p>
+      The browser geolocation API is used <strong>only if you choose to
+      use it</strong> — by selecting "center on my location" or adding a
+      "my location" marker in the Customize panel. When enabled, your
+      coordinates are used in your browser to position the map and are
+      <strong>never stored in a shareable link, never saved to our
+      servers (we have none), and never sent to any third party.</strong>
+      If you never enable those options, GeoClock never requests your
+      location.
+    </p>
+
+    <h2>Place-name search</h2>
+    <p>
+      When you add a marker by typing a place name, the text you type is
+      sent to the OpenStreetMap <strong>Nominatim</strong> geocoding
+      service to look up its coordinates. Only the text you enter is sent;
+      no personal data, location, or identifier accompanies the request.
+      This feature is optional — if you add markers by coordinates or by
+      your current location, no request is made. Nominatim is operated by
+      the OpenStreetMap Foundation under its own
+      <a href="https://wiki.osmfoundation.org/wiki/Privacy_Policy">privacy
+      policy</a>.
+    </p>
+
+    <h2>Map imagery and timezone data</h2>
+    <p>
+      All NASA Blue/Black Marble imagery and the timezone boundary data
+      are bundled inside the extension and load locally. Displaying the
+      map requires no network connection and makes no external requests.
+    </p>
+
+    <h2>Permissions, explained</h2>
+    <ul>
+      <li>
+        <strong>Geolocation</strong> — used only for the optional
+        "center on my location" / "my location" marker features described
+        above.
+      </li>
+      <li>
+        <strong>Access to <code>nominatim.openstreetmap.org</code></strong>
+        — used only for the optional place-name search described above.
+      </li>
+    </ul>
+    <p class="muted">
+      GeoClock requests no other permissions. It does not read your
+      browsing history, tabs, bookmarks, or the content of any web page.
+    </p>
+
+    <h2>Children's privacy</h2>
+    <p>
+      GeoClock collects no personal information from anyone, including
+      children.
+    </p>
+
+    <h2>Changes to this policy</h2>
+    <p>
+      If this policy changes, the "last updated" date above will change
+      and the revised policy will be posted at this URL.
+    </p>
+
+    <footer>
+      Questions about this policy? Contact
+      <a href="mailto:privacy@geoclock.world">privacy@geoclock.world</a>.
+    </footer>
+  </main>
+</body>
+</html>
