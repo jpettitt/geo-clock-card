@@ -478,7 +478,7 @@ function el(tag, attrs = {}, ...kids) {
 // initWebConfig — public entry point
 // ---------------------------------------------------------------
 
-export function initWebConfig(card) {
+export function initWebConfig(card, opts = {}) {
   injectStyles();
 
   // Initial config precedence: URL > localStorage > defaults.
@@ -487,18 +487,35 @@ export function initWebConfig(card) {
     : loadStored() || { ...DEFAULTS, markers: [] };
 
   // "Remember on this browser" is on by default if a stored blob
-  // already exists (the user opted in previously).
-  let remember = hasStored();
+  // already exists (the user opted in previously). The Chrome
+  // new-tab extension passes rememberByDefault:true — there it IS the
+  // user's own browser and settings should stick without ticking a box.
+  let remember = hasStored() || !!opts.rememberByDefault;
+
+  // Update the address bar so a storage-derived config still produces a
+  // shareable link. Guarded: a new-tab override page (chrome://newtab)
+  // can reject replaceState, and a failed cosmetic URL sync must not
+  // break config application/persistence.
+  const syncUrl = () => {
+    try {
+      history.replaceState(null, '', urlFromConfig(cfg));
+    } catch {
+      /* non-navigable origin (e.g. extension new-tab) — ignore */
+    }
+  };
 
   // Apply to the card immediately and sync the URL so a reload of a
   // storage-derived config produces a shareable link too.
   const render = () => applyConfig(card, cardConfigFromWeb(cfg));
   const persist = () => {
-    history.replaceState(null, '', urlFromConfig(cfg));
+    syncUrl();
     if (remember) saveStored(cfg);
   };
   render();
-  history.replaceState(null, '', urlFromConfig(cfg));
+  // Persist the initial config when remembering by default so the very
+  // first new tab's defaults survive even before any edit.
+  if (remember) saveStored(cfg);
+  syncUrl();
 
   // --- Live geolocation loop -------------------------------------
   // Shared by the "my location" auto marker AND live centering
@@ -750,7 +767,7 @@ export function initWebConfig(card) {
       syncGlobalColors();
       renderMarkers();
       render();
-      history.replaceState(null, '', urlFromConfig(cfg));
+      syncUrl();
       if (remember) saveStored(cfg);
       ensureGeoLoop(); // markers cleared → stop the geo loop
     },

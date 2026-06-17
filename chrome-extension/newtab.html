@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>New Tab</title>
+  <!--
+    GeoClock new-tab page. Chrome-less, full-window render of
+    geo-clock-card, letterboxed to fit whatever window aspect the
+    browser hands us. All assets (card bundle, NASA imagery, timezone
+    GeoJSON, config panel) ship inside the extension and load over the
+    chrome-extension:// origin, so the page works with no network.
+
+    MV3 forbids inline scripts, so the bootstrap lives in newtab.js.
+  -->
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+    }
+    /* Flex-center the card so the letterbox bars sit symmetrically on
+       whichever axis is the short one. */
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    /* Letterbox (contain): the widest box of the map's aspect ratio
+       that fits the window. --geo-frame-ar is published by the card's
+       render and kept in sync by newtab.js as the band toggle changes
+       the ratio. The frame (width:100% of the host) then derives its
+       height from its own aspect-ratio, so slice == meet (no crop) and
+       the HTML marker overlay lines up with the SVG map. The fallback
+       matches the band-on viewBox ratio for the very first paint. */
+    geo-clock-card {
+      display: block;
+      width: min(100vw, calc(100vh * var(--geo-frame-ar, 1.917)));
+    }
+    /* Fallback shown only if the bundle fails to load. */
+    .stage-error {
+      display: none;
+      position: fixed;
+      inset: 0;
+      align-items: center;
+      justify-content: center;
+      color: #9aa3b0;
+      font: 0.95rem -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      text-align: center;
+      padding: 2rem;
+    }
+    .stage-error.is-visible { display: flex; }
+  </style>
+</head>
+<body>
+  <div class="stage-error" id="stage-error">
+    Couldn't load the GeoClock bundle. Check the extension console.
+  </div>
+  <script type="module" src="newtab.js"></script>
+</body>
+</html>

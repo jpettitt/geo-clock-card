@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "GeoClock New Tab",
+  "version": "0.1.0",
+  "description": "A live world day/night clock (NASA Blue/Black Marble) as your new tab page. Runs fully offline — all imagery and data are bundled.",
+  "chrome_url_overrides": { "newtab": "newtab.html" },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "permissions": ["geolocation"],
+  "host_permissions": ["https://nominatim.openstreetmap.org/*"]
+}

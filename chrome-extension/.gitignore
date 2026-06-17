@@ -1,0 +1,4 @@
+# Generated, loadable extension (assembled by build.sh)
+build/
+# Chrome Web Store upload packages
+*.zip

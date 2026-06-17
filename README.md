@@ -15,6 +15,9 @@ the planet.
 
 🌍 **Live demo:** <https://geoclock.world>
 
+🧩 **Chrome new-tab extension:** a standalone, fully-offline build of the same
+card that replaces your new-tab page — see [`chrome-extension/`](chrome-extension/).
+
 ![preview](docs/web/preview.png)
 
 ## What it does
