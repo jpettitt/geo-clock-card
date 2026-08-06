@@ -148,7 +148,7 @@
     // enforces this so the page can't silently serve an old bundle.
     const ASSET_BASE =
       location.protocol === 'https:' || location.protocol === 'http:'
-        ? '/v0.2.9'
+        ? '/v0.2.10'
         : '.';
 
     /**
@@ -165,17 +165,28 @@
       const raw = hash.get('cfg') ?? query.get('cfg');
       if (!raw) return { config: { type: 'custom:geo-clock-card' } };
 
+      // URLSearchParams already percent-decoded raw AND turned `+`
+      // into spaces — but standard base64 contains `+`, and spaces
+      // can't otherwise appear in a base64 payload, so undo that
+      // first. Also accept base64url (- _), which needs no escaping.
+      const b64 = raw.replace(/ /g, '+').replace(/-/g, '+').replace(/_/g, '/');
       // Try base64 first because most callers (Swift app, others)
       // will encode that way to avoid quoting the JSON braces /
-      // quotes in a URL. Fall back to raw URL-encoded JSON for the
-      // hand-built case. The fallback covers BOTH failure shapes:
-      // atob throwing, and atob "succeeding" on raw JSON that
-      // happens to be valid base64 alphabet but decodes to garbage
-      // that then fails JSON.parse.
+      // quotes in a URL. The fallbacks cover the other shapes:
+      // atob throwing, atob "succeeding" on raw JSON that happens to
+      // be valid base64 alphabet but decodes to garbage that fails
+      // JSON.parse, and plain already-decoded JSON (raw was percent-
+      // decoded above, so decodeURIComponent again would double-
+      // decode and throw on any literal `%`).
       try {
-        return JSON.parse(atob(raw));
+        return JSON.parse(atob(b64));
       } catch {
-        /* not base64-encoded JSON — try the URL-encoded form */
+        /* not base64-encoded JSON — try plain JSON */
+      }
+      try {
+        return JSON.parse(raw);
+      } catch {
+        /* not plain JSON — last resort: a legacy double-encoded link */
       }
       try {
         return JSON.parse(decodeURIComponent(raw));
@@ -192,7 +203,16 @@
      * expandShortcuts / applyConfig / waitForCardAssets are the
      * shared headless helpers from geoclock-config.js.
      */
+    // Generation token: geoclockConfigure() can be called again while
+    // a mount is still awaiting the bundle/assets. Without it the
+    // superseded mount keeps running against a detached card and
+    // fires a geoclockReady the embedder then screenshots — capturing
+    // the wrong (or no) frame. Only the latest mount may proceed past
+    // each await.
+    let mountSeq = 0;
+
     async function mountCard(rawConfig, rawHass) {
+      const seq = ++mountSeq;
       try {
         await loadCardBundle(ASSET_BASE);
       } catch (err) {
@@ -201,6 +221,7 @@
           .classList.add('is-visible');
         return;
       }
+      if (seq !== mountSeq) return; // superseded while loading
 
       // Remove any previous card so configure() can be called more
       // than once. The stage-error div stays — it's hidden by
@@ -218,6 +239,7 @@
       // to 2048/1068. The SVG's preserveAspectRatio="xMidYMid slice"
       // handles the crop for whatever aspect the embedder mounts at.
       await card.updateComplete?.catch(() => {});
+      if (seq !== mountSeq) return; // superseded — a newer mount owns the DOM
       const frame = card.shadowRoot?.querySelector('.frame');
       if (frame) {
         frame.style.aspectRatio = 'auto';
@@ -237,6 +259,7 @@
       // to the old timing instead of hanging the pipeline — the
       // embedder's own watchdog stays the final backstop.
       await waitForCardAssets(card, config, 8000);
+      if (seq !== mountSeq) return; // superseded — don't fire a stale ready
 
       // Signal "card is mounted and painted" so embedders driving
       // the screenshot loop know when it's safe to call

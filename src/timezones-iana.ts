@@ -1,7 +1,7 @@
 // IANA time-zone polygon overlay for DST-aware hover hit-testing.
 //
-// Source: timezone-boundary-builder's "now" GeoJSON (~64 currently-
-// distinct zones), simplified to 1% retention (~400 KB on disk).
+// Source: timezone-boundary-builder's "now" GeoJSON (419 zone
+// polygons), simplified to 1% retention (~960 KB on disk).
 // See scripts/fetch-tz-iana.sh.
 //
 // Each polygon is tagged with an IANA `tzid` (e.g. "America/New_York")
@@ -36,11 +36,24 @@ let cachedDataUrl: string | null = null;
 export function loadIanaTimezones(url: string): Promise<IanaFeatureCollection> {
   if (cachedDataPromise && cachedDataUrl === url) return cachedDataPromise;
   cachedDataUrl = url;
-  cachedDataPromise = fetch(url).then((r) => {
-    if (!r.ok) throw new Error(`iana tz fetch failed: ${r.status}`);
-    return r.json();
-  });
-  return cachedDataPromise;
+  const p: Promise<IanaFeatureCollection> = fetch(url)
+    .then((r) => {
+      if (!r.ok) throw new Error(`iana tz fetch failed: ${r.status}`);
+      return r.json();
+    })
+    .catch((err) => {
+      // A transient failure (HA restarting, flaky tablet Wi-Fi) must
+      // not poison the cache with a forever-rejected promise — clear
+      // it so the next setConfig/reconnect retries. Guarded so a
+      // newer in-flight load isn't clobbered.
+      if (cachedDataPromise === p) {
+        cachedDataPromise = null;
+        cachedDataUrl = null;
+      }
+      throw err;
+    });
+  cachedDataPromise = p;
+  return p;
 }
 
 export function ianaToPolygons(

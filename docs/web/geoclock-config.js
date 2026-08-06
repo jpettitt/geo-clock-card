@@ -1,18 +1,20 @@
 // geoclock-config.js — shared, HEADLESS config plumbing for the
 // web deployments of geo-clock-card.
 //
-// Imported by BOTH index.html (the configurable demo page) and
-// wallpaper.html (the chrome-less screenshot/wallpaper renderer).
-// It contains only the impedance-matching between a plain config
-// object and the HA-shaped `(config, hass)` the card expects —
-// NO UI, NO URL parsing, NO storage. Keep it that way:
+// Imported by index.html (the configurable demo page),
+// wallpaper.html (the chrome-less screenshot/wallpaper renderer),
+// and the Chrome new-tab extension (chrome-extension/build.sh copies
+// it next to newtab.js). It contains only the impedance-matching
+// between a plain config object and the HA-shaped `(config, hass)`
+// the card expects — NO UI, NO URL parsing, NO storage. Keep it
+// that way:
 //
 //   - The macOS wallpaper app loads wallpaper.html, which imports
 //     this module. Anything UI-ish added here would leak controls
 //     into the wallpaper renderer.
 //   - The config PANEL (markers editor, geocoding, param codec,
-//     localStorage) lives in geoclock-webconfig.js, which ONLY
-//     index.html imports.
+//     localStorage) lives in geoclock-webconfig.js, imported by
+//     index.html and the extension's newtab.js — never here.
 //   - The HA card bundle (built from src/) never imports either of
 //     these files, so none of this reaches Home Assistant.
 
@@ -163,7 +165,12 @@ export async function waitForCardAssets(card, config, timeoutMs) {
     return img.decode().catch(() => {});
   });
 
-  const wantTz = config?.showTimezoneBoundaries !== false;
+  // Either overlay layer counts: the offset bands (.tz-region) render
+  // under showTimezoneRegions even when the IANA hover layer is off,
+  // and a cold-cache screenshot must wait for whichever is enabled.
+  const wantTz =
+    config?.showTimezoneBoundaries !== false ||
+    config?.showTimezoneRegions === true;
   const tzWait = wantTz
     ? (async () => {
         while (Date.now() < deadline) {

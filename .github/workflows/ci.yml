@@ -1,0 +1,29 @@
+name: CI
+
+# Tests + build on pull requests. Without this, the first time a
+# branch's tests run is inside the deploy job — after the merge has
+# already landed on main.
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build

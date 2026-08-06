@@ -1,9 +1,10 @@
 name: Release
 
-# Triggered by pushing a v*.*.* tag. Builds the card from source,
-# gzips the bundle, and attaches everything to a GitHub Release —
-# creating the release on the fly if a `gh release create` hasn't
-# already been run for the tag.
+# Triggered by pushing a v*.*.* tag. Builds the card from source and
+# attaches everything in dist/ to a GitHub Release — creating the
+# release on the fly if a `gh release create` hasn't already been run
+# for the tag. (No .gz sidecar: HACS downloads EVERY release asset
+# into the user's www/community/, so extra files are junk there.)
 
 on:
   push:
@@ -31,16 +32,21 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Check tag matches package.json version
+        # A v0.3.0 tag on a 0.2.9 tree would publish a release whose
+        # HACS version and bundle content disagree.
+        run: |
+          PKG="v$(jq -r .version package.json)"
+          if [[ "$PKG" != "$GITHUB_REF_NAME" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME != package.json version $PKG — bump package.json (and the ASSET_BASE pins) before tagging."
+            exit 1
+          fi
+
       - name: Test
         run: npm test
 
       - name: Build
         run: npm run build
-
-      - name: Gzip bundle
-        # -k keeps the original; -n strips name/timestamp so the
-        # output is deterministic across CI runs; -9 maxes compression.
-        run: gzip -kn9 dist/geo-clock-card.js
 
       - name: Drop source maps from the release bundle
         # Sourcemaps are useful at dev time but leak source structure
@@ -56,7 +62,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
-          # All shippable artifacts: JS bundle (+ pre-gzipped),
+          # All shippable artifacts: JS bundle,
           # GeoJSON overlays, and every monthly Blue/Black Marble
           # image. HACS copies whatever sits next to the named JS
           # file, so the imagery has to land here too — otherwise

@@ -2,23 +2,36 @@
 
 Source for the live demo at <https://geoclock.world>. Single origin
 behind Cloudflare: HTML and every card asset (JS bundle, NASA imagery,
-IANA GeoJSON) are served from `geoclock.world`. Cloudflare R2 backs
-the versioned asset paths; Cloudflare Pages (or another static-HTML
-origin behind the same CDN) serves this directory's `index.html`.
+IANA GeoJSON) are served from `geoclock.world`, all backed by one
+Cloudflare R2 bucket bound to the custom domain.
 
 ## Files
 
 - [`index.html`](index.html) — the single-page site. One constant
   (`ASSET_BASE`) controls which release of the card the demo loads;
-  bumped in lockstep with the live release.
+  bumped in lockstep with `package.json#version` (CI enforces this).
 - [`wallpaper.html`](wallpaper.html) — chrome-less, full-bleed
   render of the card meant to be screenshotted and set as a
   desktop wallpaper. Accepts the full card config via
-  `?cfg=<base64-or-URL-encoded JSON>` (URL form), or via
+  `?cfg=<base64-or-JSON>` (URL form), or via
   `window.geoclockConfigure({ config, hass })` (JS API form — used
   by the macOS wallpaper app). See the in-file header comment for
   the supported shortcuts (inline-coordinate markers,
-  `mainTimeZone`, `centerLatitude` / `centerLongitude`).
+  `mainTimeZone`, `centerLatitude` / `centerLongitude`). Carries its
+  own `ASSET_BASE` pin, also CI-checked.
+- [`privacy.html`](privacy.html) — privacy policy for the site and
+  the Chrome new-tab extension (the Web Store listing links here).
+- [`geoclock-config.js`](geoclock-config.js) — shared HEADLESS
+  config plumbing (shortcut expansion, bundle loading, asset
+  readiness). Imported by `index.html`, `wallpaper.html`, the Chrome
+  extension, and bundled into the macOS wallpaper app.
+- [`geoclock-webconfig.js`](geoclock-webconfig.js) — the slide-out
+  Customize panel (URL codec, localStorage, Nominatim geocoding,
+  panel DOM). Imported by `index.html` and the Chrome extension.
+  **Moving or renaming either JS module breaks
+  `chrome-extension/build.sh` and the macOS app's
+  `sync-web-assets.sh` — update those consumers in the same
+  commit.**
 - [`preview.png`](preview.png) — screenshot used by the project's
   root README and as the page's OpenGraph image.
 - [`favicon.svg`](favicon.svg) /
@@ -46,16 +59,16 @@ custom-domain-bound to `geoclock.world` and serves both the site
         path: /   │                                       path: /v*/  │
                   ▼                                                   ▼
         ┌──────────────────┐                              ┌─────────────────┐
-        │  index.html      │                              │  /v0.2.0/       │
-        │  preview.png     │                              │     geo-clock-  │
-        │  logo.svg (TBD)  │                              │     card.js     │
-        │                  │                              │     blue-       │
-        │  Synced by       │                              │     marble-*    │
-        │  deploy-site.yml │                              │     timezones-  │
-        │  on every push   │                              │     iana.json   │
-        │  to main         │                              │     …           │
-        │                  │                              │  Uploaded once  │
-        │                  │                              │  per release    │
+        │  index.html      │                              │  /v0.2.10/      │
+        │  wallpaper.html  │                              │     geo-clock-  │
+        │  privacy.html    │                              │     card.js     │
+        │  geoclock-*.js   │                              │     blue-       │
+        │                  │                              │     marble-*    │
+        │  Synced by       │                              │     timezones-  │
+        │  deploy-site.yml │                              │     iana.json   │
+        │  on every push   │                              │     …           │
+        │  to main         │                              │  Immutable —    │
+        │  (no-cache)      │                              │  1-year cache   │
         └──────────────────┘                              └─────────────────┘
 ```
 
@@ -67,42 +80,33 @@ imagery / GeoJSON fetch already points at the right path.
 
 ## How deployment actually runs
 
-### Site (HTML, preview.png, future logo.svg)
+Everything is automated in
+[`.github/workflows/deploy-site.yml`](../../.github/workflows/deploy-site.yml),
+which runs on every push to `main`:
 
-[`.github/workflows/deploy-site.yml`](../../.github/workflows/deploy-site.yml)
-syncs `docs/web/` to the `geoclock-world` R2 bucket on every push to
-`main`. Required repo secrets:
+1. `npm ci && npm test && npm run build` — `dist/` is rebuilt from
+   source (the build is deterministic, so this matches the committed
+   bundle for the same commit).
+2. Guard: both HTML `ASSET_BASE` pins must reference
+   `/v<package.json#version>` or the deploy fails.
+3. Guard: if any file already exists under `/v<version>/` on the
+   bucket with different content, the deploy fails — immutable paths
+   are never rewritten; bump the version instead.
+4. `dist/` syncs to `/v<version>/` with a 1-year immutable
+   `Cache-Control` (assets first, so live HTML never pins a missing
+   path).
+5. `docs/web/` syncs to the bucket root with `Cache-Control:
+   no-cache` (mutable files revalidate at the edge). `--delete`
+   removes dropped files, with `--exclude 'v*/*'` protecting the
+   versioned prefixes.
+
+Required repo secrets:
 
 | Secret | Source |
 | --- | --- |
 | `R2_ACCESS_KEY_ID` | Cloudflare → R2 → Manage R2 API Tokens |
 | `R2_SECRET_ACCESS_KEY` | (same flow) |
 | `R2_ACCOUNT_ID` | Cloudflare dashboard → right column → "Account ID" |
-
-The sync uses `--delete` so dropped files are removed from the bucket
-too, but `--exclude 'v*/*'` protects the versioned card-asset
-directories — they're populated by a separate release flow (below).
-
-### Versioned card assets (`/v<X.Y.Z>/...`)
-
-Currently uploaded out-of-band — either by a manual `wrangler` run
-after each release, or by extending `release.yml` to push `dist/` to
-R2 alongside the GitHub Release attachment. Sketch of the manual
-path:
-
-```bash
-# After `npm run build`, replace v0.2.0 with the tag being shipped.
-for f in dist/*; do
-  wrangler r2 object put geoclock-world/v0.2.0/"$(basename "$f")" \
-    --file "$f" \
-    --cache-control 'public, max-age=31536000, immutable'
-done
-```
-
-MIME types: the card bundle is `application/javascript`; imagery is
-`image/jpeg`; GeoJSON is `application/json`. Cloudflare infers from
-extension at the edge, but `--content-type` is available if you want
-to be explicit.
 
 ### Bucket + DNS one-time wiring
 
@@ -115,22 +119,18 @@ to be explicit.
 
 ## Bumping the live demo to a new release
 
-1. Build and tag the new release in the main repo (e.g. `v0.2.1`).
-2. Upload that release's `dist/*` to R2 under the new `/v0.2.1/`
-   prefix. Old prefixes stay; older snapshots of the demo can still
-   be reached by editing one URL.
-3. Edit one line in [`index.html`](index.html):
+One commit, three edits, then push:
 
-   ```diff
-   - const ASSET_BASE = '/v0.2.0';
-   + const ASSET_BASE = '/v0.2.1';
-   ```
+1. Bump `version` in `package.json`.
+2. Update the `ASSET_BASE` pin in [`index.html`](index.html) **and**
+   [`wallpaper.html`](wallpaper.html) to the same `/vX.Y.Z`.
+3. Push to `main` — CI verifies the pins, uploads the new `/vX.Y.Z/`
+   assets, and syncs the site. Old prefixes stay forever, so older
+   snapshots of the demo remain reachable by editing one URL.
 
-4. Commit + push. Cloudflare Pages auto-redeploys within a minute.
-
-Visitors with the previous bundle still cached will load the old card
-until their cache expires; the new path is a fresh URL so the browser
-fetches it cleanly without needing a busted cache.
+Visitors with the previous bundle still cached load it only until the
+HTML revalidates (no-cache); the new asset path is a fresh URL so the
+browser fetches it cleanly without a cache bust.
 
 ## Local testing
 
@@ -138,9 +138,10 @@ fetches it cleanly without needing a busted cache.
 # Serve docs/web/ at http://localhost:8080
 python3 -m http.server -d docs/web 8080
 
-# Separately, make /v0.2.0/ resolve to the freshly-built dist/ so
-# the relative ASSET_BASE works locally too. Simplest is a symlink:
-ln -s ../../dist docs/web/v0.2.0
+# Separately, make /v<version>/ resolve to the freshly-built dist/ so
+# the relative ASSET_BASE works locally too (match the version pinned
+# in index.html). Simplest is a symlink:
+ln -s ../../dist docs/web/v0.2.10
 # (delete the symlink before committing so it doesn't end up in git)
 ```
 
@@ -151,5 +152,5 @@ loads, and time-zone hover works.
 
 Drop `logo.svg` into this folder, then in `index.html` replace the
 header's `<div class="wordmark">` block with whatever combination
-of logo + wordmark the design calls for. `geoclock.world/logo.svg`
-will resolve once Pages redeploys.
+of logo + wordmark the design calls for. It deploys with the next
+push to `main`.

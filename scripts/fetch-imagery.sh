@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 # Download NASA imagery and resize for the card:
-#   - 12 monthly Blue Marble (day) frames from SVS dataset 3523, picked
-#     mid-month (day 15) from the 366-frame leap-year cycle
+#   - 24 Blue Marble (day) frames from SVS dataset 3523 — start (day 1)
+#     and mid (day 15) of each month from the 366-frame leap-year cycle
 #   - Black Marble 2012 (night)
 #
 # All public-domain NASA products. Sources:
-#   day:   https://svs.gsfc.nasa.gov/3523  (frames 0014, 0045, ..., 0349)
+#   day:   https://svs.gsfc.nasa.gov/3523  (frames 0000, 0014, ..., 0349)
 #   night: https://eoimages.gsfc.nasa.gov/images/imagerecords/79000/79765/
 #
 # Day frames are 4000×2000 PNG @ ~8.5 MB each. We resize to 2048×1024
-# JPEG @ q90 (~530 KB each, 6.4 MB for the full set of 12). The raw
+# JPEG @ q90 (~530 KB each, ~13 MB for the full set of 24). The raw
 # downloads stay in .fetch-tmp/ so re-runs are cached.
 #
-# Requires: curl + sips (macOS built-in). Linux: swap sips for
-# `magick convert in.png -resize 2048x1024! -quality 90 out.jpg`.
+# Requires: curl + sips (macOS) or ImageMagick (Linux) — auto-detected.
+# NOTE: the resized assets are COMMITTED under assets/, so running this
+# is optional unless you're refreshing the imagery itself.
 
 set -euo pipefail
 
@@ -69,8 +70,17 @@ download() {
 resize_to_2048() {
   local in="$1" out="$2"
   echo "  resizing: $(basename "$out")"
-  sips --resampleWidth 2048 -s format jpeg -s formatOptions 90 \
-       "$in" --out "$out" >/dev/null
+  if command -v sips >/dev/null 2>&1; then
+    sips --resampleWidth 2048 -s format jpeg -s formatOptions 90 \
+         "$in" --out "$out" >/dev/null
+  elif command -v magick >/dev/null 2>&1; then
+    magick "$in" -resize 2048x1024! -quality 90 "$out"
+  elif command -v convert >/dev/null 2>&1; then
+    convert "$in" -resize 2048x1024! -quality 90 "$out"
+  else
+    echo "error: need sips (macOS) or ImageMagick (magick/convert) to resize." >&2
+    exit 1
+  fi
 }
 
 echo "Blue Marble — 24 daylight frames (start + mid of each month)"

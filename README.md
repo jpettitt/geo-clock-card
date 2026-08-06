@@ -170,9 +170,13 @@ markers:
     label: Office            # optional — defaults to the entity's friendly_name
     color: "#3da9fc"         # optional — defaults to markerColor
   - entity: person.alice
+    dayColor: "#ff9933"      # optional day/night pair — this marker recolors
+    nightColor: "#3da9fc"    # live as the terminator crosses its location
 markerLabelMode: always     # always | hover
 markerColor: "#3da9fc"      # default fill for markers without their own color
                             # — omit (or unset) to let `--geo-marker-color` win
+markerDayColor: "#ff9933"   # card-wide day/night defaults; setting either opts
+markerNightColor: "#3da9fc" # every marker into day/night mode (per-marker wins)
 markerShowDay: true         # append weekday after the time (e.g. "12:22 PM Friday")
 
 # Overlays
@@ -269,6 +273,8 @@ center mode, time-scrubbing with solstice/equinox presets, etc.
 - [`src/timezones-iana.ts`](src/timezones-iana.ts) — IANA polygon hit-testing layer + DST-aware `Intl.DateTimeFormat` wrapper.
 - [`src/timezone-band.ts`](src/timezone-band.ts) — top-of-map hour band + tick lines.
 - [`src/day-image.ts`](src/day-image.ts) — picks the right monthly daylight image for a given date.
+- [`src/marker-color.ts`](src/marker-color.ts) — day/night marker color selection from sun elevation.
+- [`src/config-utils.ts`](src/config-utils.ts) — pure config sanitizers (colors, locale, imagery base, numeric guards), unit-tested in isolation.
 - [`src/geo-clock-card.ts`](src/geo-clock-card.ts) — the Lit element that wires it all together.
 - [`src/geo-clock-card-editor.ts`](src/geo-clock-card-editor.ts) — visual config editor (HA `ha-textfield` / `ha-switch` / `ha-formfield` / `ha-selector` / `ha-expansion-panel`, plus native `<select>` for the centering / time-source / marker-mode dropdowns where `ha-select` was unreliable). Awaits `loadCardHelpers()` before rendering so the entity selectors register correctly. Lazy-loaded by the card via `getConfigElement()` and bundled inline.
 

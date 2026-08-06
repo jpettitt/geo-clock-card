@@ -86,8 +86,10 @@
       — are saved in your browser's local storage
       (<code>localStorage</code>) so they persist across new tabs. This
       data stays on your device, is never transmitted anywhere, and you
-      can clear it at any time by resetting the settings in the Customize
-      panel or clearing the extension's site data.
+      can clear it at any time by unchecking "Remember on this browser"
+      in the Customize panel or clearing the extension's site data.
+      ("Reset" returns the settings to their defaults; unchecking
+      "Remember" is what removes the stored copy.)
     </p>
 
     <h2>Your location</h2>
@@ -117,9 +119,13 @@
 
     <h2>Map imagery and timezone data</h2>
     <p>
-      All NASA Blue/Black Marble imagery and the timezone boundary data
-      are bundled inside the extension and load locally. Displaying the
-      map requires no network connection and makes no external requests.
+      In the extension, all NASA Blue/Black Marble imagery and the
+      timezone boundary data are bundled locally — displaying the map
+      requires no network connection and makes no external requests. On
+      the geoclock.world website the same assets load from our
+      first-party CDN (Cloudflare), which processes standard request
+      logs (such as IP addresses) to serve the files, like any website
+      host.
     </p>
 
     <h2>Permissions, explained</h2>

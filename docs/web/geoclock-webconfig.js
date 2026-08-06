@@ -1,9 +1,11 @@
 // geoclock-webconfig.js — the configurable-demo CONTROL PANEL.
 //
-// Imported ONLY by index.html (the geoclock.world landing page).
-// NOT by wallpaper.html and NOT bundled into the macOS app — those
-// have their own controls, so this UI must never reach them. The
-// only shared dependency is the headless geoclock-config.js.
+// Imported by index.html (the geoclock.world landing page) and by
+// the Chrome new-tab extension (chrome-extension/build.sh copies it
+// next to newtab.js). NOT by wallpaper.html and NOT bundled into the
+// macOS app — those have their own controls, so this UI must never
+// reach them. The only shared dependency is the headless
+// geoclock-config.js.
 //
 // Responsibilities, all self-contained here so index.html stays a
 // thin host:
@@ -41,11 +43,25 @@ const DEFAULTS = {
   band: true, // hour-number strip + vertical UTC-offset bands
   tz: true, // time-zone hover/identify popup
   utc: true, // UTC line under the clock
+  locale: '', // BCP-47 tag; '' = follow the browser language
   markerDay: DEF_MARKER_DAY, // global day-side marker color
   markerNight: DEF_MARKER_NIGHT, // global night-side marker color
   // [{ label, lat, lon, dayColor?, nightColor? }] — per-marker
   // day/night are optional overrides; absent = inherit the globals.
   markers: [],
+};
+
+// Probe Intl once instead of trusting the tag: locales arrive from
+// hand-typed input, URLs, and stored blobs, and the card discards
+// invalid ones anyway — better to reject at the edge with feedback.
+const isValidLocale = (s) => {
+  if (typeof s !== 'string' || !s) return false;
+  try {
+    new Intl.DateTimeFormat(s);
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 const STORAGE_KEY = 'geoclock.webconfig.v1';
@@ -67,7 +83,17 @@ const round4 = (n) => Math.round(n * 1e4) / 1e4;
 // ---------------------------------------------------------------
 
 const clampLat = (n) => Math.max(-90, Math.min(90, n));
-const isHex = (s) => /^#[0-9a-f]{3,8}$/i.test(s);
+// Only real CSS hex lengths (3/4/6/8) — {3,8} admitted 5- and
+// 7-digit strings that are invalid CSS.
+const isHex = (s) => /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(s);
+// <input type=color> only accepts #rrggbb — expand short forms and
+// drop alpha so a 3/4/8-digit value doesn't blank the swatch to black.
+const hexForSwatch = (s) => {
+  if (!isHex(s)) return '#000000';
+  if (s.length === 4 || s.length === 5)
+    return `#${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}`;
+  return s.slice(0, 7);
+};
 // Labels can't contain the field delimiter — strip it (rare) so
 // the positional marker encoding stays unambiguous.
 const cleanLabel = (s) => String(s || '').split(MARK_SEP).join(' ').trim();
@@ -138,6 +164,7 @@ function configFromUrl(src = paramSource()) {
   if (p.get('band') === '0') cfg.band = false;
   if (p.get('tz') === '0') cfg.tz = false;
   if (p.get('utc') === '0') cfg.utc = false;
+  if (isValidLocale(p.get('locale'))) cfg.locale = p.get('locale');
   if (isHex(p.get('mday') || '')) cfg.markerDay = p.get('mday');
   if (isHex(p.get('mnight') || '')) cfg.markerNight = p.get('mnight');
   cfg.markers = p.getAll('marker').map(parseMarker).filter(Boolean);
@@ -156,6 +183,7 @@ function urlFromConfig(cfg) {
   if (!cfg.band) p.set('band', '0');
   if (!cfg.tz) p.set('tz', '0');
   if (!cfg.utc) p.set('utc', '0');
+  if (cfg.locale) p.set('locale', cfg.locale);
   if (cfg.markerDay !== DEF_MARKER_DAY) p.set('mday', cfg.markerDay);
   if (cfg.markerNight !== DEF_MARKER_NIGHT) p.set('mnight', cfg.markerNight);
   for (const m of cfg.markers) p.append('marker', markerToStr(m));
@@ -172,6 +200,7 @@ function hasUrlConfig(src = paramSource()) {
     p.has('band') ||
     p.has('tz') ||
     p.has('utc') ||
+    p.has('locale') ||
     p.has('mday') ||
     p.has('mnight') ||
     p.has('marker')
@@ -205,6 +234,8 @@ function cardConfigFromWeb(cfg) {
     markerDayColor: cfg.markerDay,
     markerNightColor: cfg.markerNight,
   };
+  // Locale only when set — the card treats absent as "browser default".
+  if (cfg.locale) cc.locale = cfg.locale;
   if (cfg.center === 'lon') {
     cc.center = 'longitude';
     cc.centerLongitude = clampLon(cfg.lon);
@@ -259,6 +290,7 @@ function loadStored() {
       band: parsed.band !== false,
       tz: parsed.tz !== false,
       utc: parsed.utc !== false,
+      locale: isValidLocale(parsed.locale) ? parsed.locale : '',
       markerDay: isHex(parsed.markerDay) ? parsed.markerDay : DEF_MARKER_DAY,
       markerNight: isHex(parsed.markerNight)
         ? parsed.markerNight
@@ -513,8 +545,12 @@ export function initWebConfig(card, opts = {}) {
   };
   render();
   // Persist the initial config when remembering by default so the very
-  // first new tab's defaults survive even before any edit.
-  if (remember) saveStored(cfg);
+  // first new tab's defaults survive even before any edit — but NEVER
+  // when the config came from the URL: opening someone's share link
+  // must not silently replace the viewer's own saved setup. (Their
+  // first explicit edit still persists the link-derived config —
+  // that's an intentional adoption.)
+  if (remember && !hasUrlConfig()) saveStored(cfg);
   syncUrl();
 
   // --- Live geolocation loop -------------------------------------
@@ -570,6 +606,12 @@ export function initWebConfig(card, opts = {}) {
     onclick: () => panel.classList.add('is-open'),
   });
   toggleBtn.innerHTML = '&#9881; Customize';
+  // The default `right` offset reserves room for index.html's
+  // fullscreen button; non-web hosts (the extension new tab) have no
+  // such button, so hug the corner instead of leaving a dead gap.
+  if (location.protocol !== 'http:' && location.protocol !== 'https:') {
+    toggleBtn.style.right = '0.75rem';
+  }
   stage.appendChild(toggleBtn);
 
   // Marker list container (re-rendered on change).
@@ -715,7 +757,7 @@ export function initWebConfig(card, opts = {}) {
   // Global day/night marker colors. Every marker flips between
   // these as the terminator crosses it (per-marker overrides win).
   const mkGlobalColor = (key) => {
-    const inp = el('input', { type: 'color', value: cfg[key] });
+    const inp = el('input', { type: 'color', value: hexForSwatch(cfg[key]) });
     inp.addEventListener('change', () => {
       cfg[key] = inp.value;
       renderMarkers(); // marker swatches show the effective color
@@ -727,8 +769,8 @@ export function initWebConfig(card, opts = {}) {
   const dayColorInput = mkGlobalColor('markerDay');
   const nightColorInput = mkGlobalColor('markerNight');
   const syncGlobalColors = () => {
-    dayColorInput.value = cfg.markerDay;
-    nightColorInput.value = cfg.markerNight;
+    dayColorInput.value = hexForSwatch(cfg.markerDay);
+    nightColorInput.value = hexForSwatch(cfg.markerNight);
   };
 
   // Footer: copy link, remember, reset.
@@ -737,7 +779,14 @@ export function initWebConfig(card, opts = {}) {
     type: 'button',
     text: 'Copy share link',
     onclick: async () => {
-      const link = location.origin + urlFromConfig(cfg);
+      // Share links must point at the public site even when the panel
+      // runs on an origin nobody else can open (chrome-extension://
+      // new tab) — opts.shareBase supplies the public URL there.
+      const rel = urlFromConfig(cfg);
+      const hash = rel.includes('#') ? rel.slice(rel.indexOf('#')) : '';
+      const link = opts.shareBase
+        ? opts.shareBase + hash
+        : location.origin + rel;
       try {
         await navigator.clipboard.writeText(link);
         copiedNote.textContent = 'Copied!';
@@ -763,6 +812,8 @@ export function initWebConfig(card, opts = {}) {
       centerSel.value = 'sun';
       lonRow.style.display = 'none';
       lonInput.value = '0';
+      localeInput.value = '';
+      localeErr.textContent = '';
       syncToggles();
       syncGlobalColors();
       renderMarkers();
@@ -781,6 +832,33 @@ export function initWebConfig(card, opts = {}) {
     tzRow.querySelector('input').checked = cfg.tz;
     utcRow.querySelector('input').checked = cfg.utc;
   };
+
+  // Locale — time/date language + 12/24-hour format for the clock,
+  // marker times, and popup zone names.
+  const localeInput = el('input', {
+    class: 'gcw-input gcw-grow',
+    type: 'text',
+    placeholder: 'Browser default',
+    value: cfg.locale,
+  });
+  const localeErr = el('div', { class: 'gcw-err' });
+  localeInput.addEventListener('change', () => {
+    const v = localeInput.value.trim();
+    if (v && !isValidLocale(v)) {
+      localeErr.textContent = `"${v}" is not a valid locale tag (e.g. fr-FR).`;
+      return; // leave cfg unchanged until the tag parses
+    }
+    localeErr.textContent = '';
+    cfg.locale = v;
+    render();
+    persist();
+  });
+  const localeRow = el(
+    'div',
+    { class: 'gcw-row' },
+    el('label', { text: 'Locale' }),
+    localeInput,
+  );
 
   const panel = el(
     'aside',
@@ -829,6 +907,12 @@ export function initWebConfig(card, opts = {}) {
       bandRow,
       tzRow,
       utcRow,
+      localeRow,
+      localeErr,
+      el('div', {
+        class: 'gcw-attr',
+        text: 'Locale sets the time & date language and 12/24-hour format (e.g. fr-FR, ja-JP). Empty = browser default.',
+      }),
     ),
     el(
       'div',
@@ -897,7 +981,7 @@ export function initWebConfig(card, opts = {}) {
       const daySw = el('input', {
         type: 'color',
         title: 'Day color (override)',
-        value: m.dayColor || cfg.markerDay,
+        value: hexForSwatch(m.dayColor || cfg.markerDay),
       });
       daySw.addEventListener('change', () => {
         m.dayColor = daySw.value;
@@ -907,7 +991,7 @@ export function initWebConfig(card, opts = {}) {
       const nightSw = el('input', {
         type: 'color',
         title: 'Night color (override)',
-        value: m.nightColor || cfg.markerNight,
+        value: hexForSwatch(m.nightColor || cfg.markerNight),
       });
       nightSw.addEventListener('change', () => {
         m.nightColor = nightSw.value;

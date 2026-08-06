@@ -274,12 +274,35 @@ export class GeoClockCardEditor extends LitElement {
     return newHex;
   }
 
-  private colorField(field: keyof GeoClockCardConfig) {
+  private colorField(field: keyof GeoClockCardConfig, defaultColor?: string) {
     return (e: Event) => {
       const v = (e.target as HTMLInputElement).value;
-      const oldColor = this._config?.[field] as string | undefined;
+      // Fall back to the option's resolved default when the config has
+      // no value yet — otherwise the first touch of a picker discards
+      // the default's alpha (tz lines: rgba(...,0.18) → opaque white).
+      const oldColor =
+        (this._config?.[field] as string | undefined) ?? defaultColor;
       const nextColor = this.applyAlpha(v, oldColor);
       this.fire(field, nextColor);
+    };
+  }
+
+  /** Validate a BCP-47 tag before it lands in the config; an invalid
+   *  tag is ignored (the card would discard it anyway, with only a
+   *  console warning the user may never see). */
+  private localeField() {
+    return (e: Event) => {
+      const v = (e.target as HTMLInputElement).value.trim();
+      if (!v) {
+        this.fire('locale', undefined);
+        return;
+      }
+      try {
+        new Intl.DateTimeFormat(v);
+      } catch {
+        return;
+      }
+      this.fire('locale', v);
     };
   }
 
@@ -536,10 +559,18 @@ export class GeoClockCardEditor extends LitElement {
             @change=${this.toggle('showTimezoneBand')}
           ></ha-switch>
         </ha-formfield>
-        <ha-formfield label="Show time-zone overlay">
+        <ha-formfield label="Show time-zone hover layer (IANA zones)">
           <ha-switch
             ?checked=${c.showTimezoneBoundaries ?? true}
             @change=${this.toggle('showTimezoneBoundaries')}
+          ></ha-switch>
+        </ha-formfield>
+        <ha-formfield label="Show 15° offset bands">
+          <ha-switch
+            ?checked=${c.showTimezoneRegions ??
+            c.showTimezoneBoundaries ??
+            true}
+            @change=${this.toggle('showTimezoneRegions')}
           ></ha-switch>
         </ha-formfield>
         <ha-formfield label="Show hover popup (live time at the pointed-to zone)">
@@ -548,6 +579,15 @@ export class GeoClockCardEditor extends LitElement {
             @change=${this.toggle('showTimezonePopup')}
           ></ha-switch>
         </ha-formfield>
+        <ha-textfield
+          label="Locale (BCP-47, e.g. fr-FR)"
+          .value=${c.locale ?? ''}
+          @change=${this.localeField()}
+        ></ha-textfield>
+        <div class="help">
+          Governs clock, marker times, and popup zone names. Empty =
+          follow the viewer's browser language. Invalid tags are ignored.
+        </div>
       </div>
 
       <div class="section">
@@ -771,7 +811,10 @@ export class GeoClockCardEditor extends LitElement {
               id="tz-line-color"
               type="color"
               .value=${this.tzLineColorAsHex(c.timezoneLineColor)}
-              @change=${this.colorField('timezoneLineColor')}
+              @change=${this.colorField(
+                'timezoneLineColor',
+                'rgba(255, 255, 255, 0.18)',
+              )}
             />
           </div>
           <div class="help">

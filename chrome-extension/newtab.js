@@ -26,7 +26,13 @@ async function main() {
   // Mounts the slide-out Customize panel, applies the stored/default
   // config, and wires geolocation + persistence. rememberByDefault keeps
   // the user's center/markers/locale across new tabs without a checkbox.
-  initWebConfig(card, { rememberByDefault: true });
+  // shareBase: "Copy share link" must produce a URL others can open —
+  // a chrome-extension:// link is dead outside this profile, so share
+  // links point at the public demo (same config codec).
+  initWebConfig(card, {
+    rememberByDefault: true,
+    shareBase: 'https://geoclock.world/',
+  });
 
   keepAspectRatioInSync(card);
 }

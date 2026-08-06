@@ -2,7 +2,11 @@
 
 A Home Assistant custom Lovelace card that displays the world map with a live day/night terminator, modeled on the Geochron® world clock (no affiliation). Uses NASA Blue Marble (day) and Black Marble (night) imagery, both public domain.
 
-> Status: **Implemented (v0.2.3)** — Production-ready, fully implemented with HACS integration, performance optimizations, and comprehensive unit tests.
+> Status: **Historical design sketch.** The project shipped (v0.1.x
+> onward) and has since grown beyond this document — some sections
+> describe options and files that were never built or were renamed.
+> For the real config surface see `src/types.ts` and the README;
+> this file is kept for the original rationale and math notes.
 
 ---
 

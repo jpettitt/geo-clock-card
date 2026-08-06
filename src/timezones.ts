@@ -51,11 +51,24 @@ let cachedDataUrl: string | null = null;
 export function loadTimezones(url: string): Promise<TzFeatureCollection> {
   if (cachedDataPromise && cachedDataUrl === url) return cachedDataPromise;
   cachedDataUrl = url;
-  cachedDataPromise = fetch(url).then((r) => {
-    if (!r.ok) throw new Error(`tz fetch failed: ${r.status}`);
-    return r.json();
-  });
-  return cachedDataPromise;
+  const p: Promise<TzFeatureCollection> = fetch(url)
+    .then((r) => {
+      if (!r.ok) throw new Error(`tz fetch failed: ${r.status}`);
+      return r.json();
+    })
+    .catch((err) => {
+      // A transient failure (HA restarting, flaky tablet Wi-Fi) must
+      // not poison the cache with a forever-rejected promise — clear
+      // it so the next setConfig/reconnect retries. Guarded so a
+      // newer in-flight load isn't clobbered.
+      if (cachedDataPromise === p) {
+        cachedDataPromise = null;
+        cachedDataUrl = null;
+      }
+      throw err;
+    });
+  cachedDataPromise = p;
+  return p;
 }
 
 /**

@@ -1,5 +1,41 @@
 # TODO
 
+## v0.2.10
+
+- [x] Full-project code review (card, web, extension, CI) — fixes below.
+- [x] Robustness: invalid `locale` or non-numeric config values can no
+      longer break the card (Intl probe in setConfig; finite-number
+      guards so NaN never reaches clamp()/setInterval). A failed
+      timezone-JSON fetch retries on the next setConfig instead of
+      caching the rejection forever. Backward clock steps repaint the
+      map immediately.
+- [x] Perf: tz polygon layers wrapped in Lit `guard()` — hover/hass
+      churn no longer re-maps ~540 SVG templates per render. Hover
+      highlight now survives the ~2-min polygon rebuilds (tzid compare).
+- [x] Parity: `locale` + `showTimezoneRegions` now in the HA visual
+      editor; `locale` added to the web/extension Customize panel
+      (URL `locale=` param + localStorage). Editor tz-line color picker
+      preserves the default 18% alpha on first touch.
+- [x] Web: opening a shared link no longer overwrites the viewer's
+      saved panel config. Extension "Copy share link" now emits a
+      geoclock.world URL (was a dead chrome-extension:// one).
+      wallpaper.html `?cfg=` handles base64 `+`/base64url and no longer
+      double-decodes; concurrent `geoclockConfigure()` calls can't fire
+      a stale `geoclock-ready`.
+- [x] CI: immutable-path guard now covers every dist/ file (was JS
+      only); site sync gets `Cache-Control: no-cache`; versioned assets
+      upload before the HTML that pins them; PR test workflow (ci.yml);
+      release.yml asserts tag == package.json version; dropped the .gz
+      release asset (HACS was installing it as junk).
+- [x] Housekeeping: sanitizers extracted to `src/config-utils.ts` with
+      unit tests; README documents day/night marker colors; docs/web
+      README rewritten to match the automated deploy; fetch-imagery.sh
+      works on Linux (ImageMagick fallback).
+- [ ] Deferred from review: `sortByVisualArea` re-parses ~1 MB of path
+      data per rebuild (cache per tzid); per-pointermove
+      getBoundingClientRect outside rAF; editor can't unset day/night
+      marker colors once touched (YAML-only to clear).
+
 ## Stage 1 — minimum viable visual
 
 - [x] Project scaffold (rollup, ts, vitest, hacs.json)
@@ -10,7 +46,7 @@
 - [x] Local time + UTC + date readout
 - [x] NASA Blue/Black Marble fetch script
 - [x] First in-Home-Assistant test
-- [x] HACS metadata polish + first tagged release (v0.1.x shipped, v0.2.0 in flight)
+- [x] HACS metadata polish + first tagged release (v0.1.x, v0.2.x shipped)
 
 ## Stage 2 — time-zone affordances
 
@@ -35,8 +71,8 @@
 ## Quality / housekeeping (ongoing)
 
 - [ ] Add a render snapshot test using JSDOM to lock in SVG output for fixed timestamps
-- [ ] Storybook-ish demo page in `dev/` for local visual iteration without HA
-- [x] CI: GitHub Actions running `npm test` and `npm run build` (release.yml + deploy-site.yml)
+- [x] Storybook-ish demo page in `dev/` for local visual iteration without HA (dev/index.html with sliders)
+- [x] CI: GitHub Actions running `npm test` and `npm run build` (ci.yml on PRs + release.yml + deploy-site.yml)
 - [x] Optimize IANA timezone lookup performance via 4-decimal coordinates caching (v0.2.3)
 - [x] Fix out-of-bounds wrapped longitudes in timezone polygon searches (v0.2.3)
 - [x] Retain and preserve custom alpha transparency in Lovelace visual color editor pickers (v0.2.3)

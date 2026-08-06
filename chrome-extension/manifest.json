@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GeoClock New Tab",
-  "version": "0.1.0",
+  "version": "0.2.10",
   "description": "A live world day/night clock (NASA Blue/Black Marble) as your new tab page. Runs fully offline — all imagery and data are bundled.",
   "chrome_url_overrides": { "newtab": "newtab.html" },
   "icons": {

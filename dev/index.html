@@ -62,7 +62,8 @@
     </label>
     <label><input id="utc" type="checkbox" checked> show UTC</label>
     <label><input id="band" type="checkbox" checked> show hour band</label>
-    <label><input id="boundaries" type="checkbox" checked> show TZ boundaries</label>
+    <label><input id="boundaries" type="checkbox" checked> TZ hover popup</label>
+    <label><input id="regions" type="checkbox" checked> TZ offset bands (lines)</label>
     <label><input id="homemarker" type="checkbox"> home marker</label>
     <label><input id="homemarkerlabel" type="checkbox"> home marker label + time</label>
     <label><input id="markers" type="checkbox"> sample markers (London, Tokyo)</label>
@@ -169,6 +170,9 @@
         showUTC: utc.checked,
         showTimezoneBand: band.checked,
         showTimezoneBoundaries: boundaries.checked,
+        // Set explicitly (not left to default-follow-boundaries) so the
+        // preview can exercise lines-off + hover-on and vice versa.
+        showTimezoneRegions: regions.checked,
         dayBrightness: Number(brightness.value),
         nightContrast: Number(contrast.value),
         twilightColor: twilightColor.value,
@@ -247,6 +251,7 @@
     utc.addEventListener('change', rebuild);
     band.addEventListener('change', rebuild);
     boundaries.addEventListener('change', rebuild);
+    regions.addEventListener('change', rebuild);
     center.addEventListener('change', rebuild);
     centerLongitude.addEventListener('input', rebuild);
     homemarker.addEventListener('change', rebuild);

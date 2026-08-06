@@ -1,5 +1,14 @@
 import { LitElement, html, css, svg, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { guard } from 'lit/directives/guard.js';
+import {
+  clamp,
+  num,
+  validateLocale,
+  parseFrozenNow,
+  sanitizeCssColor,
+  sanitizeImageryBase,
+} from './config-utils.js';
 import { subsolarPoint, type SubsolarPoint } from './sun.js';
 import { isDaylightAt, pickDayNightColor } from './marker-color.js';
 import { terminatorCurve } from './terminator.js';
@@ -424,12 +433,12 @@ export class GeoClockCard extends LitElement {
     if (!config) {
       throw new Error('geo-clock-card: missing config');
     }
-    const base = sanitizeImageryBase(config.imageryBase)
+    const base = sanitizeImageryBase(config.imageryBase, import.meta.url)
       ?? new URL('.', import.meta.url).href;
     const frozenNow = parseFrozenNow(config.now);
     this.config = {
-      twilightDegrees: clamp(config.twilightDegrees ?? 8, 1, 18),
-      updateInterval: clamp(config.updateInterval ?? 1, 1, 600),
+      twilightDegrees: clamp(num(config.twilightDegrees, 8), 1, 18),
+      updateInterval: clamp(num(config.updateInterval, 1), 1, 600),
       showUTC: config.showUTC ?? true,
       showTimezoneBand: config.showTimezoneBand ?? true,
       showTimezoneBoundaries: config.showTimezoneBoundaries ?? true,
@@ -443,16 +452,17 @@ export class GeoClockCard extends LitElement {
       timezoneLineColor:
         sanitizeCssColor(config.timezoneLineColor) ??
         'rgba(255, 255, 255, 0.18)',
-      dayBrightness: clamp(config.dayBrightness ?? 1.15, 0, 5),
-      nightContrast: clamp(config.nightContrast ?? 1, 0, 5),
+      dayBrightness: clamp(num(config.dayBrightness, 1.15), 0, 5),
+      nightContrast: clamp(num(config.nightContrast, 1), 0, 5),
       twilightColor: sanitizeCssColor(config.twilightColor) ?? '#463701',
-      twilightOpacity: clamp(config.twilightOpacity ?? 0.26, 0, 1),
+      twilightOpacity: clamp(num(config.twilightOpacity, 0.26), 0, 1),
       imageryBase: base.endsWith('/') ? base : base + '/',
       center: config.center ?? 'sun',
-      centerLongitude:
-        typeof config.centerLongitude === 'number'
-          ? clamp(config.centerLongitude, -180, 180)
-          : undefined,
+      // Number.isFinite, not typeof: NaN is typeof 'number' and would
+      // survive clamp() into the projection math.
+      centerLongitude: Number.isFinite(config.centerLongitude)
+        ? clamp(config.centerLongitude as number, -180, 180)
+        : undefined,
       centerEntity: config.centerEntity,
       showHomeMarker: config.showHomeMarker ?? false,
       showHomeMarkerLabel: config.showHomeMarkerLabel ?? false,
@@ -471,9 +481,10 @@ export class GeoClockCard extends LitElement {
       markerShowDay: config.markerShowDay ?? true,
       mainTimeSource: pickMainTimeSource(config.mainTimeSource),
       mainTimeEntity: config.mainTimeEntity,
-      // Empty string would make Intl throw a RangeError, so coerce it
-      // (and any falsy) to undefined → browser/runtime default locale.
-      locale: config.locale || undefined,
+      // validateLocale probes Intl once here so a hand-typed YAML typo
+      // (en_US) degrades to the browser default instead of throwing
+      // RangeError inside render() on every tick.
+      locale: validateLocale(config.locale || undefined),
       frozenNow,
     };
     // Pin or release the clocks based on the frozen setting.
@@ -574,7 +585,10 @@ export class GeoClockCard extends LitElement {
   private tick(): void {
     const now = new Date();
     this.displayNow = now;
-    if (now.getTime() - this.mapNow.getTime() >= MAP_UPDATE_INTERVAL_MS) {
+    // abs() so a backward clock step (NTP correction, manual change)
+    // repaints promptly instead of freezing the map until wall time
+    // catches back up to the stale future mapNow.
+    if (Math.abs(now.getTime() - this.mapNow.getTime()) >= MAP_UPDATE_INTERVAL_MS) {
       this.mapNow = now;
     }
   }
@@ -1057,8 +1071,8 @@ export class GeoClockCard extends LitElement {
                  a viewport's width, so the previous 3x-wide
                  region truncated the night layer with a hard
                  vertical edge at the image-tile boundary. The
-                 polygon overhangs the region by half a world on
-                 each side (see tiledPolyVertices) so the feather
+                 polygon overhangs the region by OVERHANG_DEG (45°)
+                 on each side (see tiledPolyVertices) so the feather
                  blur never reaches its closing edges, and the
                  region's own hard clip at x=0/MAP_W is invisible
                  because adjacent <use> instances of the night
@@ -1161,8 +1175,15 @@ export class GeoClockCard extends LitElement {
           ${this.tzPolygons && this.config.showTimezoneRegions
             ? svg`
                 <g transform="translate(${tzDriftPx} 0)">
+                  ${guard(
+                    // guard(): renders fire far more often than the layer
+                    // changes (1 Hz tick, every hass mutation, hover at
+                    // display rate) — without it Lit re-maps ~120 path
+                    // templates per render just to diff them to no-ops.
+                    [this.tzPolygons, this.config.showTimezoneBoundaries],
+                    () => svg`
                   <g id="tz-offset-layer">
-                    ${this.tzPolygons.map((p) =>
+                    ${this.tzPolygons!.map((p) =>
                       // The bands carry their hover popup only when the
                       // hover/popup feature (showTimezoneBoundaries) is on.
                       // The demo can show the bands as pure chrome (band
@@ -1178,17 +1199,26 @@ export class GeoClockCard extends LitElement {
                     )}
                   </g>
                   <use href="#tz-offset-layer" x="${-MAP_W}" pointer-events="none"/>
-                  <use href="#tz-offset-layer" x="${MAP_W}" pointer-events="none"/>
+                  <use href="#tz-offset-layer" x="${MAP_W}" pointer-events="none"/>`,
+                  )}
                 </g>
               `
             : ''}
           ${this.tzIanaPolygons && this.config.showTimezoneBoundaries
             ? svg`
                 <g transform="translate(${tzDriftPx} 0)">
+                  ${guard(
+                    // Keyed on the hovered tzid (not the polygon object):
+                    // the ~419-template re-map runs only when the pointer
+                    // crosses a zone border or the layer rebuilds, and the
+                    // tzid comparison keeps the highlight alive across the
+                    // ~2-min polygon rebuilds that replace every object.
+                    [this.tzIanaPolygons, this.hoveredIana?.tzid],
+                    () => svg`
                   <g id="tz-iana-layer">
-                    ${this.tzIanaPolygons.map(
+                    ${this.tzIanaPolygons!.map(
                       (p) => svg`<path class="tz-iana-region${
-                                        this.hoveredIana === p ? ' is-active' : ''
+                                        this.hoveredIana?.tzid === p.tzid ? ' is-active' : ''
                                       }" d="${p.d}"
                                        @pointerenter=${(e: PointerEvent) => this.onIanaEnter(e, p)}
                                        @pointermove=${this.onZoneMove}
@@ -1196,7 +1226,8 @@ export class GeoClockCard extends LitElement {
                     )}
                   </g>
                   <use href="#tz-iana-layer" x="${-MAP_W}" pointer-events="none"/>
-                  <use href="#tz-iana-layer" x="${MAP_W}" pointer-events="none"/>
+                  <use href="#tz-iana-layer" x="${MAP_W}" pointer-events="none"/>`,
+                  )}
                 </g>
               `
             : ''}
@@ -1664,10 +1695,6 @@ function atOffset(
   return { time, date };
 }
 
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, n));
-}
-
 /**
  * Sort polygons by visual bounding-box area DESCENDING so that big
  * zones (Russia, Antarctica) render first and small ones (Bermuda,
@@ -1698,63 +1725,6 @@ function sortByVisualArea(polys: IanaPolygon[]): IanaPolygon[] {
     return (xMax - xMin) * (yMax - yMin);
   };
   return [...polys].sort((a, b) => area(b.d) - area(a.d));
-}
-
-function parseFrozenNow(input: string | number | Date | undefined): Date | undefined {
-  if (input == null) return undefined;
-  const d = input instanceof Date ? input : new Date(input);
-  return Number.isFinite(d.getTime()) ? d : undefined;
-}
-
-/**
- * Restrict imageryBase to http(s), relative paths, or the page's own
- * scheme. Config can arrive from an attacker-controlled `?cfg=` URL
- * parameter on the public demo pages; a crafted base would make the
- * visitor's browser issue GET requests (imagery + the two timezone
- * JSON fetches) to an arbitrary origin. The fetched data is always
- * rendered through escaped bindings so this was never script
- * injection — but there's no reason to allow `javascript:`-shaped
- * or cross-protocol bases at all. Returns undefined (→ caller falls
- * back to the bundle-relative default) for anything unrecognized.
- */
-function sanitizeImageryBase(input: string | undefined): string | undefined {
-  if (typeof input !== 'string' || input.length === 0) return undefined;
-  try {
-    const resolved = new URL(input, import.meta.url);
-    const pageProto =
-      typeof location !== 'undefined' ? location.protocol : 'https:';
-    const ok =
-      resolved.protocol === 'https:' ||
-      resolved.protocol === 'http:' ||
-      resolved.protocol === pageProto;
-    return ok ? input : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Restrict twilightColor to a small, well-known set of CSS color
- * forms. We splice this value into a `style` attribute, and Lit's
- * attribute-escaping already prevents breaking out of the attribute
- * — but a value like `red; background: url(http://attacker.tld/x)`
- * would still inject a rule that pings the URL. Locking the input
- * to hex / rgb[a] / hsl[a] / named-color forms closes that vector.
- * Returns undefined for anything unrecognized so the caller can
- * fall back to its default.
- */
-function sanitizeCssColor(input: string | undefined): string | undefined {
-  if (typeof input !== 'string') return undefined;
-  const v = input.trim();
-  // #abc, #abcd, #aabbcc, #aabbccdd
-  if (/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v)) return v;
-  // rgb(...) / rgba(...) / hsl(...) / hsla(...) — digits, dots, commas,
-  // percent, whitespace, slashes (CSS-color-4 syntax). No semicolons,
-  // braces, or url().
-  if (/^(?:rgb|rgba|hsl|hsla)\([\d.,%\s/]+\)$/i.test(v)) return v;
-  // Plain alphabetic CSS color names (red, transparent, currentcolor…)
-  if (/^[a-z]+$/i.test(v)) return v;
-  return undefined;
 }
 
 /**

@@ -86,7 +86,7 @@ describe('buildHourCells (antimeridian-centered, hours only)', () => {
     const cells = buildHourCells(new Date('2024-06-21T20:00:00Z'), MAP_W, -119);
     // Center column (k=12) sits on lon = -119
     expect(cells[12].realLon).toBe(-119);
-    // local24 at -119 = (20 + (-119)/15) mod 24 = (20 - 7.933) mod 24 = 12.067 → floor = 12 (noon)
+    // local24 at -119 = (20 + (-119)/15) mod 24 = (20 - 7.933) mod 24 = 12.067 → rounds to 12 (noon)
     expect(cells[12].isNoon).toBe(true);
   });
 
