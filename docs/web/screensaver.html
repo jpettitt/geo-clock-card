@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GeoClock — Screensaver for Mac</title>
+  <meta name="description" content="Turn the GeoClock live world map into your Mac's screensaver. Free companion to the GeoClock Wallpaper app.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <style>
+    :root {
+      --bg: #0c1118;
+      --fg: #e6e9ef;
+      --muted: #9aa3b0;
+      --accent: #ff7a3d;
+      --link: #6ab0ff;
+    }
+    html { box-sizing: border-box; }
+    *, *::before, *::after { box-sizing: inherit; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+        system-ui, sans-serif;
+      line-height: 1.6;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 3rem 1.25rem 5rem;
+    }
+    h1 { font-size: 1.9rem; margin: 0 0 0.25rem; }
+    h2 { font-size: 1.2rem; margin: 2rem 0 0.5rem; }
+    .lede {
+      border-left: 3px solid var(--accent);
+      padding: 0.6rem 0 0.6rem 1rem;
+      color: var(--fg);
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 0 6px 6px 0;
+    }
+    a { color: var(--link); }
+    code {
+      background: rgba(255, 255, 255, 0.08);
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+    .muted { color: var(--muted); }
+    ol, ul { padding-left: 1.2rem; }
+    li { margin: 0.3rem 0; }
+    .cta {
+      display: inline-block;
+      margin: 1rem 0;
+      padding: 0.6rem 1.2rem;
+      background: var(--accent);
+      color: #0c1118;
+      font-weight: 600;
+      border-radius: 8px;
+      text-decoration: none;
+    }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>GeoClock Screensaver for Mac</h1>
+
+    <p class="lede">
+      The same live world map you see at
+      <a href="https://geoclock.world">geoclock.world</a> — day/night
+      terminator, NASA imagery, your location markers and a ticking
+      clock — as your Mac's screensaver. Free and open source, a
+      companion to the <strong>GeoClock Wallpaper</strong> app.
+    </p>
+
+    <a class="cta"
+       href="https://github.com/jpettitt/geoclock-wallpaper-mac/releases">
+      Download from GitHub Releases</a>
+    <p class="muted">
+      Grab <code>GeoClockSaver.saver.zip</code> from the newest release.
+      Signed and notarized. Requires macOS 13 or later.
+    </p>
+
+    <h2>How it works</h2>
+    <p>
+      The screensaver doesn't render the map itself — it displays frames
+      published by the GeoClock Wallpaper app and draws the live clock
+      and marker overlay on top. So the app must be installed, running,
+      and publishing frames (Settings → Map → “Publish frames for the
+      GeoClock screensaver”). If you came here from the app's
+      “Install screensaver…” button, that's already set up.
+    </p>
+
+    <h2>Install</h2>
+    <ol>
+      <li>Download and unzip <code>GeoClockSaver.saver.zip</code>.</li>
+      <li>Double-click <code>GeoClockSaver.saver</code> and confirm the
+        install prompt (or copy it to
+        <code>~/Library/Screen&nbsp;Savers/</code>).</li>
+      <li>Pick <strong>GeoClock</strong> under System Settings →
+        Screen&nbsp;Saver → Other.</li>
+    </ol>
+    <p class="muted">
+      Don't have the wallpaper app yet? It's
+      <code>GeoClockWallpaper.zip</code> in the same release.
+    </p>
+
+    <footer>
+      GPL-3.0-or-later ·
+      <a href="https://github.com/jpettitt/geoclock-wallpaper-mac">source
+      on GitHub</a> ·
+      <a href="privacy.html">privacy</a>
+    </footer>
+  </main>
+</body>
+</html>
