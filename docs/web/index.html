@@ -52,14 +52,19 @@
     a { color: var(--link); }
     a:hover { text-decoration: underline; }
 
+    /* Wordmark left, install CTAs right. flex-wrap + margin-left:
+       auto keeps the CTA cluster right-aligned even when a narrow
+       viewport wraps it under the wordmark. */
     header {
       padding: 1rem 1.5rem;
       width: 100%;
       display: flex;
-      justify-content: center;
+      justify-content: space-between;
       align-items: center;
+      gap: 0.75rem 1rem;
+      flex-wrap: wrap;
     }
-    .wordmark { text-align: center; }
+    .wordmark { text-align: left; }
     .wordmark h1 {
       font-size: 1.4rem;
       font-weight: 600;
@@ -71,6 +76,39 @@
       color: var(--muted);
       font-size: 0.85rem;
       margin: 0;
+    }
+
+    /* Install CTAs — quiet ghost pills in the same visual language
+       as the fullscreen button (translucent dark, 1px border), so
+       the map stays the hero. */
+    .ctas {
+      display: flex;
+      gap: 0.6rem;
+      margin-left: auto;
+      flex-wrap: wrap;
+    }
+    .cta-btn {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.45rem 0.95rem;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(8, 14, 28, 0.55);
+      color: var(--fg);
+      font-size: 0.85rem;
+      font-weight: 500;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+    .cta-btn:hover {
+      background: rgba(8, 14, 28, 0.85);
+      border-color: rgba(255, 255, 255, 0.32);
+      text-decoration: none;
+    }
+    .cta-btn:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
     }
 
     /* Map is full-bleed: spans the entire viewport width so the
@@ -226,6 +264,14 @@
       <h1>geoclock<span class="tld">.world</span></h1>
       <p class="tagline">live world day/night map</p>
     </div>
+    <nav class="ctas" aria-label="Install GeoClock">
+      <a class="cta-btn"
+         href="https://chromewebstore.google.com/detail/geoclock-new-tab/nflnpmdpblmhkigchffcfohhjaejhpph"
+         rel="noopener">Add to Chrome</a>
+      <a class="cta-btn"
+         href="https://github.com/jpettitt/geoclock-wallpaper-mac/releases"
+         rel="noopener">Get the Mac app</a>
+    </nav>
   </header>
 
   <div class="stage" id="stage">
