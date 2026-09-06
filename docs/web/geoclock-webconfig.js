@@ -590,14 +590,19 @@ export function initWebConfig(card, opts = {}) {
   const needsGeo = () => cfg.center === 'me' || cfg.markers.some((m) => m.auto);
   let geoTimer = null;
   let geoDenied = false; // remember a hard denial to update the UI hint
+  // Backoff for transient failures (see catch below). Reset on
+  // success so a later hiccup starts the ladder over.
+  let geoRetryTimer = null;
+  let geoRetryDelay = 15000;
   const refreshMyLocation = async () => {
     if (!needsGeo()) return;
     try {
       myLocation = await getBrowserLocation();
       geoDenied = false;
+      geoRetryDelay = 15000;
       render();
       renderMarkers(); // update the row's live coord readout
-    } catch {
+    } catch (err) {
       // Permission denied / position unavailable / timeout. We keep
       // the LAST known fix if we had one (so a transient failure on
       // a 30-min refresh doesn't blank the marker); only the
@@ -611,6 +616,20 @@ export function initWebConfig(card, opts = {}) {
       }
       render();
       renderMarkers();
+      // Position lookups routinely TIME OUT right after a page
+      // load (the OS throttles back-to-back WiFi scans), and the
+      // only retry used to be the 30-min cycle — one transient
+      // failure pinned the fallback for the whole session ("reload
+      // centers on sun, but works again later"). Retry with
+      // backoff until the first fix lands; a hard permission
+      // denial (code 1) won't heal on its own, so don't poll it.
+      if (!myLocation && err?.code !== 1 && !geoRetryTimer) {
+        geoRetryTimer = setTimeout(() => {
+          geoRetryTimer = null;
+          refreshMyLocation();
+        }, geoRetryDelay);
+        geoRetryDelay = Math.min(geoRetryDelay * 2, 10 * 60 * 1000);
+      }
     }
   };
   const ensureGeoLoop = () => {
