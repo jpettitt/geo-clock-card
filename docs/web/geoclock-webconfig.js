@@ -67,6 +67,11 @@ const isValidLocale = (s) => {
 };
 
 const STORAGE_KEY = 'geoclock.webconfig.v1';
+// Declared up here, not beside its helpers: `lastFix` is
+// initialized at module scope via the (hoisted) loadLastFix(),
+// which would hit the const's temporal dead zone if this lived
+// below that line.
+const LASTFIX_KEY = 'geoclock.lastfix.v1';
 
 // Per-marker field delimiter in the URL. `~` rather than `,` so a
 // label that contains commas ("Paris, France") survives the
@@ -232,6 +237,11 @@ function hasUrlConfig(src = paramSource()) {
 // and every 30 min by initWebConfig.
 let myLocation = null;
 
+// Cached last-fix longitude (see LASTFIX_KEY) — the fallback tier
+// between a live fix and the clock estimate. Loaded once at
+// import; updated whenever a fresh fix lands.
+let lastFix = loadLastFix();
+
 function cardConfigFromWeb(cfg) {
   const cc = {
     // The "hour band" toggle groups the visual chrome: the hour-number
@@ -253,15 +263,14 @@ function cardConfigFromWeb(cfg) {
     cc.center = 'longitude';
     cc.centerLongitude = clampLon(cfg.lon);
   } else if (cfg.center === 'me') {
-    // Live "my location" centering — the longitude of the current
-    // geolocation fix. Before the first fix lands — or when it
-    // never will (permission denied, one-time grant expired on
-    // reload) — estimate from the device clock instead, so "center
-    // on me" degrades to "roughly me", never silently to sun. The
+    // Live "my location" centering. Fallback ladder while no fresh
+    // fix is available (still resolving, permission denied, grant
+    // forgotten on reload): the cached last-fix longitude, then a
+    // clock-derived estimate — never a silent revert to sun. The
     // precise fix re-centers via render() when it arrives.
     cc.center = 'longitude';
     cc.centerLongitude = clampLon(
-      myLocation ? myLocation.lon : approxLonFromClock(),
+      (myLocation ?? lastFix)?.lon ?? approxLonFromClock(),
     );
   } else {
     cc.center = 'sun';
@@ -270,7 +279,9 @@ function cardConfigFromWeb(cfg) {
   for (const m of cfg.markers) {
     // Auto markers resolve their coords from the live geolocation
     // fix; until one is available they're simply omitted (they pop
-    // in once the fix lands and we re-render).
+    // in once the fix lands and we re-render). No lastFix here —
+    // the cache is longitude-only by design (a marker needs a full
+    // coordinate, which we deliberately never persist).
     const coords = m.auto ? myLocation : { lat: m.lat, lon: m.lon };
     if (!coords) continue;
     markers.push({
@@ -348,6 +359,48 @@ function saveStored(cfg) {
 function clearStored() {
   try {
     localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+// LONGITUDE of the last successful geolocation fix, cached so a
+// reload can center on "roughly me" (better than the clock
+// estimate) while the fresh fix is still resolving or when it
+// fails. Deliberately longitude-only, rounded to the whole degree:
+// centering needs nothing more (1° ≈ 5 px on the world map), a
+// meridian identifies far less than a coordinate pin, and the blob
+// stays harmless even if it ever travels with a profile
+// sync/backup. NO latitude — which is also why auto markers don't
+// use this cache. Separate key from the settings blob, but honors
+// the SAME "Remember on this browser" opt-in: we never quietly
+// persist location data for users who didn't opt into persistence,
+// and unchecking Remember clears it (privacy.html documents both).
+// The key constant lives beside STORAGE_KEY.
+
+function loadLastFix() {
+  try {
+    const p = JSON.parse(localStorage.getItem(LASTFIX_KEY));
+    return Number.isFinite(p?.lon) ? { lon: clampLon(p.lon) } : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveLastFix(fix) {
+  try {
+    localStorage.setItem(
+      LASTFIX_KEY,
+      JSON.stringify({ lon: Math.round(clampLon(fix.lon)), t: Date.now() }),
+    );
+  } catch {
+    /* storage disabled / full — non-fatal */
+  }
+}
+
+function clearLastFix() {
+  try {
+    localStorage.removeItem(LASTFIX_KEY);
   } catch {
     /* ignore */
   }
@@ -598,6 +651,8 @@ export function initWebConfig(card, opts = {}) {
     if (!needsGeo()) return;
     try {
       myLocation = await getBrowserLocation();
+      lastFix = myLocation;
+      if (remember) saveLastFix(myLocation);
       geoDenied = false;
       geoRetryDelay = 15000;
       render();
@@ -611,8 +666,9 @@ export function initWebConfig(card, opts = {}) {
       //   - center 'me' falls through to sun centering.
       geoDenied = true;
       if (!myLocation) {
-        geoErr.textContent =
-          'Location unavailable — centering from your clock’s time zone; allow location access for a precise position.';
+        geoErr.textContent = lastFix
+          ? 'Location unavailable — centering near your last position; allow location access for a live one.'
+          : 'Location unavailable — centering from your clock’s time zone; allow location access for a precise position.';
       }
       render();
       renderMarkers();
@@ -847,8 +903,13 @@ export function initWebConfig(card, opts = {}) {
   rememberCb.checked = remember;
   rememberCb.addEventListener('change', () => {
     remember = rememberCb.checked;
-    if (remember) saveStored(cfg);
-    else clearStored();
+    if (remember) {
+      saveStored(cfg);
+      if (lastFix) saveLastFix(lastFix);
+    } else {
+      clearStored();
+      clearLastFix(); // opting out clears the cached position too
+    }
   });
   const resetBtn = el('button', {
     class: 'gcw-btn',
