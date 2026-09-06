@@ -265,12 +265,23 @@
       <p class="tagline">live world day/night map</p>
     </div>
     <nav class="ctas" aria-label="Install GeoClock">
-      <a class="cta-btn"
+      <a class="cta-btn" id="chrome-cta" style="display:none"
          href="https://chromewebstore.google.com/detail/geoclock-new-tab/nflnpmdpblmhkigchffcfohhjaejhpph"
          rel="noopener">Add to Chrome</a>
       <a class="cta-btn" href="mac.html">Get the Mac app</a>
     </nav>
   </header>
+  <script>
+    // Show the extension CTA only where the extension can install:
+    // desktop Chromium. navigator.userAgentData exists only in
+    // Chromium engines (Safari/Firefox don't implement it) — a
+    // stabler signal than UA-string sniffing. Revealed via inline
+    // style, not [hidden]: .cta-btn's own display rule would
+    // override the UA sheet's [hidden]{display:none}.
+    if (navigator.userAgentData && !navigator.userAgentData.mobile) {
+      document.getElementById('chrome-cta').style.display = '';
+    }
+  </script>
 
   <div class="stage" id="stage">
     <button class="fs-btn" type="button" id="fs-btn"
