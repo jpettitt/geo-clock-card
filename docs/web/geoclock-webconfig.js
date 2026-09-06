@@ -43,6 +43,8 @@ const DEFAULTS = {
   band: true, // hour-number strip + vertical UTC-offset bands
   tz: true, // time-zone hover/identify popup
   utc: true, // UTC line under the clock
+  banner: true, // host page's top banner (only wired when the host
+  //              passes opts.bannerEl — the extension has none)
   locale: '', // BCP-47 tag; '' = follow the browser language
   markerDay: DEF_MARKER_DAY, // global day-side marker color
   markerNight: DEF_MARKER_NIGHT, // global night-side marker color
@@ -73,6 +75,14 @@ const MARK_SEP = '~';
 
 const clampLon = (n) => Math.max(-180, Math.min(180, n));
 const round4 = (n) => Math.round(n * 1e4) / 1e4;
+
+// Rough longitude implied by the device clock: the UTC offset maps
+// to 15° per hour (east positive; getTimezoneOffset() is minutes
+// BEHIND UTC). Off by up to ~a zone's width — DST skews it an hour
+// — but "roughly the viewer" beats sun-centering when geolocation
+// is denied or the browser forgot the grant between loads.
+const approxLonFromClock = () =>
+  clampLon((-new Date().getTimezoneOffset() / 60) * 15);
 
 // ---------------------------------------------------------------
 // URL-param codec — the shareable-link contract.
@@ -164,6 +174,7 @@ function configFromUrl(src = paramSource()) {
   if (p.get('band') === '0') cfg.band = false;
   if (p.get('tz') === '0') cfg.tz = false;
   if (p.get('utc') === '0') cfg.utc = false;
+  if (p.get('banner') === '0') cfg.banner = false;
   if (isValidLocale(p.get('locale'))) cfg.locale = p.get('locale');
   if (isHex(p.get('mday') || '')) cfg.markerDay = p.get('mday');
   if (isHex(p.get('mnight') || '')) cfg.markerNight = p.get('mnight');
@@ -183,6 +194,7 @@ function urlFromConfig(cfg) {
   if (!cfg.band) p.set('band', '0');
   if (!cfg.tz) p.set('tz', '0');
   if (!cfg.utc) p.set('utc', '0');
+  if (!cfg.banner) p.set('banner', '0');
   if (cfg.locale) p.set('locale', cfg.locale);
   if (cfg.markerDay !== DEF_MARKER_DAY) p.set('mday', cfg.markerDay);
   if (cfg.markerNight !== DEF_MARKER_NIGHT) p.set('mnight', cfg.markerNight);
@@ -200,6 +212,7 @@ function hasUrlConfig(src = paramSource()) {
     p.has('band') ||
     p.has('tz') ||
     p.has('utc') ||
+    p.has('banner') ||
     p.has('locale') ||
     p.has('mday') ||
     p.has('mnight') ||
@@ -239,13 +252,17 @@ function cardConfigFromWeb(cfg) {
   if (cfg.center === 'lon') {
     cc.center = 'longitude';
     cc.centerLongitude = clampLon(cfg.lon);
-  } else if (cfg.center === 'me' && myLocation) {
-    // Live "my location" centering — resolve the longitude from the
-    // current geolocation fix. Before the first fix we fall through
-    // to sun so the map still shows something; it re-centers once
-    // the fix lands and we re-render.
+  } else if (cfg.center === 'me') {
+    // Live "my location" centering — the longitude of the current
+    // geolocation fix. Before the first fix lands — or when it
+    // never will (permission denied, one-time grant expired on
+    // reload) — estimate from the device clock instead, so "center
+    // on me" degrades to "roughly me", never silently to sun. The
+    // precise fix re-centers via render() when it arrives.
     cc.center = 'longitude';
-    cc.centerLongitude = clampLon(myLocation.lon);
+    cc.centerLongitude = clampLon(
+      myLocation ? myLocation.lon : approxLonFromClock(),
+    );
   } else {
     cc.center = 'sun';
   }
@@ -290,6 +307,7 @@ function loadStored() {
       band: parsed.band !== false,
       tz: parsed.tz !== false,
       utc: parsed.utc !== false,
+      banner: parsed.banner !== false,
       locale: isValidLocale(parsed.locale) ? parsed.locale : '',
       markerDay: isHex(parsed.markerDay) ? parsed.markerDay : DEF_MARKER_DAY,
       markerNight: isHex(parsed.markerNight)
@@ -536,9 +554,19 @@ export function initWebConfig(card, opts = {}) {
     }
   };
 
+  // The host page's top banner (wordmark + install CTAs on
+  // geoclock.world). Only wired when the host passes the element —
+  // the extension new-tab has no banner and never shows the toggle.
+  const applyBanner = () => {
+    if (opts.bannerEl) opts.bannerEl.hidden = !cfg.banner;
+  };
+
   // Apply to the card immediately and sync the URL so a reload of a
   // storage-derived config produces a shareable link too.
-  const render = () => applyConfig(card, cardConfigFromWeb(cfg));
+  const render = () => {
+    applyConfig(card, cardConfigFromWeb(cfg));
+    applyBanner(); // rides every render so reset/URL loads apply it
+  };
   const persist = () => {
     syncUrl();
     if (remember) saveStored(cfg);
@@ -579,7 +607,7 @@ export function initWebConfig(card, opts = {}) {
       geoDenied = true;
       if (!myLocation) {
         geoErr.textContent =
-          'Location unavailable — allow location access for live position.';
+          'Location unavailable — centering from your clock’s time zone; allow location access for a precise position.';
       }
       render();
       renderMarkers();
@@ -827,10 +855,14 @@ export function initWebConfig(card, opts = {}) {
   const bandRow = mkToggle('band', 'Hour & zone bands');
   const tzRow = mkToggle('tz', 'Time-zone hover');
   const utcRow = mkToggle('utc', 'UTC line');
+  // Checked = shown, matching the other display toggles; the row
+  // exists only on hosts that actually have a banner.
+  const bannerRow = opts.bannerEl ? mkToggle('banner', 'Top banner') : null;
   const syncToggles = () => {
     bandRow.querySelector('input').checked = cfg.band;
     tzRow.querySelector('input').checked = cfg.tz;
     utcRow.querySelector('input').checked = cfg.utc;
+    if (bannerRow) bannerRow.querySelector('input').checked = cfg.banner;
   };
 
   // Locale — time/date language + 12/24-hour format for the clock,
@@ -907,6 +939,7 @@ export function initWebConfig(card, opts = {}) {
       bandRow,
       tzRow,
       utcRow,
+      bannerRow, // null on hosts without a banner — el() skips it
       localeRow,
       localeErr,
       el('div', {

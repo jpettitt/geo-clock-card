@@ -349,7 +349,7 @@
       // the visitor's device timezone with no hass — so each visitor
       // still sees their own clock), builds the slide-out panel, and
       // keeps the card + URL in sync as the user edits.
-      initWebConfig(card);
+      initWebConfig(card, { bannerEl: document.querySelector('header') });
     } catch (err) {
       console.error('geoclock.world: failed to load card bundle', err);
       document.getElementById('stage-error').classList.add('is-visible');
