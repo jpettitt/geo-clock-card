@@ -610,8 +610,12 @@ export function initWebConfig(card, opts = {}) {
   // The host page's top banner (wordmark + install CTAs on
   // geoclock.world). Only wired when the host passes the element —
   // the extension new-tab has no banner and never shows the toggle.
+  // Inline style, NOT the `hidden` attribute: index.html styles
+  // `header { display: flex }`, and any author display rule beats
+  // the UA sheet's [hidden] { display: none }, so `hidden` set the
+  // attribute while the banner stayed fully visible.
   const applyBanner = () => {
-    if (opts.bannerEl) opts.bannerEl.hidden = !cfg.banner;
+    if (opts.bannerEl) opts.bannerEl.style.display = cfg.banner ? '' : 'none';
   };
 
   // Apply to the card immediately and sync the URL so a reload of a
