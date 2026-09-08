@@ -116,6 +116,13 @@
       margin-left: auto;
       flex-wrap: wrap;
     }
+    /* Phone-width viewports: neither CTA can do anything useful
+       (no Web Store installs, no macOS) — give the pixels back
+       to the map. Overrides the Chromium-gate script's inline
+       display on #chrome-cta because it hides the parent. */
+    @media (max-width: 640px) {
+      .ctas { display: none; }
+    }
     .cta-btn {
       display: inline-flex;
       align-items: center;
