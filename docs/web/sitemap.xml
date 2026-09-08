@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- wallpaper.html is deliberately absent: it's a render surface
+     for the wallpaper apps (noindex), not a destination page. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://geoclock.world/</loc></url>
+  <url><loc>https://geoclock.world/about.html</loc></url>
+  <url><loc>https://geoclock.world/mac.html</loc></url>
+  <url><loc>https://geoclock.world/screensaver.html</loc></url>
+  <url><loc>https://geoclock.world/privacy.html</loc></url>
+</urlset>

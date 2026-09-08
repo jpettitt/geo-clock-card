@@ -17,6 +17,35 @@
 
   <link rel="canonical" href="https://geoclock.world/">
 
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://geoclock.world/#website",
+        "url": "https://geoclock.world/",
+        "name": "geoclock.world",
+        "description": "Live world day/night map — real solar terminator over NASA Blue Marble and Black Marble imagery, with DST-aware time zones."
+      },
+      {
+        "@type": "WebApplication",
+        "@id": "https://geoclock.world/#app",
+        "name": "GeoClock",
+        "url": "https://geoclock.world/",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Any (web browser)",
+        "browserRequirements": "Requires JavaScript",
+        "image": "https://geoclock.world/preview.png",
+        "description": "A live map of day and night on Earth with local clocks for your chosen places. Also available as a Home Assistant card, Chrome new-tab extension, and macOS wallpaper + screensaver.",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+        "author": { "@type": "Person", "name": "John Pettitt", "url": "https://github.com/jpettitt" }
+      }
+    ]
+  }
+  </script>
+
   <!-- Favicon: SVG for any modern browser (scales perfectly to any
        tab/bookmark size); 180×180 PNG for iOS home-screen bookmarks
        (Apple still requires PNG for apple-touch-icon). Both render
@@ -318,6 +347,7 @@
 
   <footer>
     <span>© 2026 geoclock.world</span>
+    <a href="about.html">About</a>
     <a href="privacy.html">Privacy</a>
     <a href="https://github.com/jpettitt/geo-clock-card">GitHub</a>
   </footer>

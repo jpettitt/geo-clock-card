@@ -1,0 +1,9 @@
+# geoclock.world — all pages crawlable; wallpaper.html opts out via
+# its own <meta name="robots" content="noindex"> (kept crawlable so
+# the noindex is actually seen). Cloudflare may prepend its managed
+# content-signals block to this file.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://geoclock.world/sitemap.xml

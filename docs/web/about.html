@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GeoClock — About</title>
+  <meta name="description" content="What GeoClock is, how the live world day/night map works, and where it runs: web, Home Assistant, Chrome new tab, and macOS wallpaper + screensaver. Free and open source.">
+  <link rel="canonical" href="https://geoclock.world/about.html">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://geoclock.world/about.html">
+  <meta property="og:title" content="GeoClock — About">
+  <meta property="og:description" content="The story and mechanics of the GeoClock live world day/night map, and the five places it runs.">
+  <meta property="og:image" content="https://geoclock.world/preview.png">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "AboutPage",
+    "url": "https://geoclock.world/about.html",
+    "name": "About GeoClock",
+    "isPartOf": { "@id": "https://geoclock.world/#website" },
+    "about": {
+      "@type": "SoftwareSourceCode",
+      "name": "geo-clock-card",
+      "codeRepository": "https://github.com/jpettitt/geo-clock-card",
+      "programmingLanguage": "TypeScript",
+      "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+      "author": { "@type": "Person", "name": "John Pettitt", "url": "https://github.com/jpettitt" }
+    }
+  }
+  </script>
+  <style>
+    :root {
+      --bg: #0c1118;
+      --fg: #e6e9ef;
+      --muted: #9aa3b0;
+      --accent: #ff7a3d;
+      --link: #6ab0ff;
+    }
+    html { box-sizing: border-box; }
+    *, *::before, *::after { box-sizing: inherit; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+        system-ui, sans-serif;
+      line-height: 1.6;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 3rem 1.25rem 5rem;
+    }
+    h1 { font-size: 1.9rem; margin: 0 0 0.25rem; }
+    h2 { font-size: 1.2rem; margin: 2rem 0 0.5rem; }
+    .lede {
+      border-left: 3px solid var(--accent);
+      padding: 0.6rem 0 0.6rem 1rem;
+      color: var(--fg);
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 0 6px 6px 0;
+    }
+    a { color: var(--link); }
+    .muted { color: var(--muted); }
+    ul { padding-left: 1.2rem; }
+    li { margin: 0.3rem 0; }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>About GeoClock</h1>
+
+    <p class="lede">
+      GeoClock is a live map of day and night on Earth — the real solar
+      terminator sweeping across NASA satellite imagery, with local
+      clocks for the places you care about. It's free, open source, and
+      runs everywhere from a browser tab to your desktop wallpaper.
+    </p>
+
+    <h2>The story</h2>
+    <p>
+      GeoClock started as a <a
+      href="https://github.com/jpettitt/geo-clock-card">Home Assistant
+      dashboard card</a>: a homage to the classic mechanical world
+      clocks that scroll a lit map past a fixed hour scale (Geochron®
+      is the famous one — GeoClock has no affiliation with it). Once
+      the card could render anywhere, the other surfaces followed
+      almost for free: this website, a Chrome new-tab page, a macOS
+      live wallpaper, and a screensaver — all driven by the same
+      rendering code.
+    </p>
+
+    <h2>How it works</h2>
+    <ul>
+      <li>Day and night sides come from NASA's <a
+        href="https://visibleearth.nasa.gov/collection/1484/blue-marble">Blue
+        Marble</a> and <a
+        href="https://earthobservatory.nasa.gov/features/NightLights">Black
+        Marble</a> imagery (public domain), blended along the real
+        terminator computed from solar geometry — including proper
+        twilight feathering.</li>
+      <li>Time zones come from <a
+        href="https://github.com/evansiroky/timezone-boundary-builder">timezone-boundary-builder</a>
+        (ODbL), so the hover popups and hour bands are DST-aware.</li>
+      <li>Everything renders in your browser (or the app's local web
+        view). There is no backend: no accounts, no tracking, and your
+        location never leaves your device — details in the
+        <a href="privacy.html">privacy policy</a>.</li>
+    </ul>
+
+    <h2>Where it runs</h2>
+    <ul>
+      <li><strong><a href="https://geoclock.world/">geoclock.world</a></strong>
+        — the live map, right here, with markers and share links.</li>
+      <li><strong><a
+        href="https://github.com/jpettitt/geo-clock-card">Home Assistant
+        card</a></strong> — the original: a Lovelace custom card,
+        installable via HACS.</li>
+      <li><strong><a
+        href="https://chromewebstore.google.com/detail/geoclock-new-tab/nflnpmdpblmhkigchffcfohhjaejhpph">GeoClock
+        New Tab</a></strong> — every new Chrome tab is the map, fully
+        offline.</li>
+      <li><strong><a href="mac.html">GeoClock Wallpaper for Mac</a></strong>
+        — your desktop is the map, with ticking clocks.</li>
+      <li><strong><a href="screensaver.html">GeoClock screensaver</a></strong>
+        — the companion saver, fed by the Mac app.</li>
+    </ul>
+
+    <h2>Open source</h2>
+    <p>
+      All of it is GPL-3.0-or-later, built by
+      <a href="https://github.com/jpettitt">John Pettitt</a>. The card,
+      website, and extension live in
+      <a href="https://github.com/jpettitt/geo-clock-card">geo-clock-card</a>;
+      the Mac app and screensaver in
+      <a href="https://github.com/jpettitt/geoclock-wallpaper-mac">geoclock-wallpaper-mac</a>.
+      Bug reports and ideas are welcome in the GitHub issues.
+    </p>
+
+    <footer>
+      © 2026 geoclock.world ·
+      <a href="privacy.html">privacy</a> ·
+      <a href="https://github.com/jpettitt/geo-clock-card">GitHub</a>
+    </footer>
+  </main>
+</body>
+</html>
