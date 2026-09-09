@@ -172,7 +172,11 @@ markers:
   - entity: person.alice
     dayColor: "#ff9933"      # optional day/night pair — this marker recolors
     nightColor: "#3da9fc"    # live as the terminator crosses its location
-markerLabelMode: always     # always | hover
+markerLabelMode: auto       # auto | always | compact | hover
+                            # auto (default): full name+time labels, degrading to
+                            # compact (small time-only, tap for full info) when the
+                            # card renders narrower than ~520px — phones, narrow
+                            # dashboard columns. always/compact pin either form.
 markerColor: "#3da9fc"      # default fill for markers without their own color
                             # — omit (or unset) to let `--geo-marker-color` win
 markerDayColor: "#ff9933"   # card-wide day/night defaults; setting either opts

@@ -143,6 +143,11 @@ export class GeoClockCard extends LitElement {
   static override styles = css`
     :host {
       display: block;
+      /* Size container so marker-label CSS can respond to the
+         CARD's rendered width (not the viewport — in HA a wide
+         screen can hold a narrow column). inline-size containment
+         leaves height free to follow the map's aspect ratio. */
+      container-type: inline-size;
       background: var(--ha-card-background, var(--card-background-color, #111));
       border-radius: var(--ha-card-border-radius, 12px);
       overflow: hidden;
@@ -376,6 +381,45 @@ export class GeoClockCard extends LitElement {
       line-height: 1.15;
       margin-top: 1px;
     }
+    /* Compact marker text: tiny time-only — no name, no weekday —
+       so a dense marker set stops shingling; full info stays one
+       tap away in the popup. Both time forms are always in the
+       DOM (.time-full with the weekday, .time-compact without)
+       and CSS picks one. Compact engages two ways:
+       - .compacted: markerLabelMode 'compact', at every size;
+       - .auto: markerLabelMode 'auto' (default), via a container
+         query against the CARD's width (:host is the size
+         container — the viewport would be the wrong thing to ask
+         in an HA dashboard column). Pure CSS, so it tracks
+         resizes with no observer; browsers without container
+         queries just keep full labels. */
+    .marker-time.time-compact {
+      display: none;
+      font-size: 8px;
+      margin-top: 0;
+    }
+    .marker-text.compacted .marker-label,
+    .marker-text.compacted .time-full {
+      display: none;
+    }
+    .marker-text.compacted {
+      top: 7px;
+    }
+    .marker-text.compacted .time-compact {
+      display: block;
+    }
+    @container (max-width: 519px) {
+      .marker-text.auto .marker-label,
+      .marker-text.auto .time-full {
+        display: none;
+      }
+      .marker-text.auto {
+        top: 7px;
+      }
+      .marker-text.auto .time-compact {
+        display: block;
+      }
+    }
     /* Custom popup. Positioned via inline transform from JS so it
        follows the cursor; ignores its own pointer events so it never
        steals hover from the underlying region. */
@@ -469,7 +513,11 @@ export class GeoClockCard extends LitElement {
       showHomeMarkerLabel: config.showHomeMarkerLabel ?? false,
       markers: sanitizeMarkers(config.markers),
       markerLabelMode:
-        config.markerLabelMode === 'hover' ? 'hover' : 'always',
+        config.markerLabelMode === 'hover' ||
+        config.markerLabelMode === 'always' ||
+        config.markerLabelMode === 'compact'
+          ? config.markerLabelMode
+          : 'auto',
       // markerColor stays undefined when the user hasn't explicitly
       // set it so `--geo-marker-color` is the true default. The
       // sanitiser drops anything that isn't a recognised CSS color.
@@ -1432,6 +1480,16 @@ export class GeoClockCard extends LitElement {
     const topPct = ((y - yMin) / totalH) * 100;
     const showLabel = this.config.showHomeMarkerLabel;
     const tz = this.resolveHomeTimezone();
+    // The home marker follows the same compact degrade as the user
+    // markers so a narrow card doesn't keep one full-size label —
+    // same class scheme, CSS decides (see the marker-text rules).
+    const mode = this.config.markerLabelMode;
+    const textClass =
+      mode === 'compact'
+        ? 'marker-text compacted'
+        : mode === 'auto'
+          ? 'marker-text auto'
+          : 'marker-text';
     const label =
       this.hass?.config?.location_name &&
       typeof this.hass.config.location_name === 'string'
@@ -1439,6 +1497,9 @@ export class GeoClockCard extends LitElement {
         : 'Home';
     const time = tz
       ? formatMarkerTime(displayNow, tz, this.config.markerShowDay, this.config.locale)
+      : '';
+    const timeCompact = tz
+      ? formatMarkerTime(displayNow, tz, false, this.config.locale)
       : '';
     return html`
       <div
@@ -1449,10 +1510,13 @@ export class GeoClockCard extends LitElement {
         <div class="marker-dot"></div>
         ${showLabel
           ? html`
-              <div class="marker-text">
+              <div class=${textClass}>
                 <div class="marker-label">${label}</div>
                 ${time
-                  ? html`<div class="marker-time">${time}</div>`
+                  ? html`<div class="marker-time time-full">${time}</div>`
+                  : ''}
+                ${timeCompact
+                  ? html`<div class="marker-time time-compact">${timeCompact}</div>`
                   : ''}
               </div>
             `
@@ -1498,12 +1562,27 @@ export class GeoClockCard extends LitElement {
   ) {
     if (!this.config) return '';
     const mode = this.config.markerLabelMode;
+    // Which-form-to-show is entirely CSS's call (see the compact
+    // marker-text rules): the class carries the mode, and both
+    // time strings ride along so no re-render is needed when the
+    // container query flips.
+    const textClass =
+      mode === 'compact'
+        ? 'marker-text compacted'
+        : mode === 'auto'
+          ? 'marker-text auto'
+          : 'marker-text';
     return markers.map((m) => {
       const { x, y } = latLonToPx(m.lat, m.lon, MAP_W, MAP_H, centerLon);
       const leftPct = (x / MAP_W) * 100;
       const topPct = ((y - yMin) / totalH) * 100;
       const time = m.tzid
         ? formatMarkerTime(displayNow, m.tzid, this.config!.markerShowDay, this.config!.locale)
+        : '';
+      // Compact form drops the day suffix along with the name —
+      // "4:49 PM", nothing else; the popup still has everything.
+      const timeCompact = m.tzid
+        ? formatMarkerTime(displayNow, m.tzid, false, this.config!.locale)
         : '';
       const isActive = this.hoveredMarker?.entity === m.entity;
       // Day/night color when either is set (recolors live as the
@@ -1531,12 +1610,15 @@ export class GeoClockCard extends LitElement {
             @pointermove=${this.onZoneMove}
             @pointerleave=${this.onMarkerLeave}
           ></div>
-          ${mode === 'always'
+          ${mode !== 'hover'
             ? html`
-                <div class="marker-text">
+                <div class=${textClass}>
                   <div class="marker-label">${m.label}</div>
                   ${time
-                    ? html`<div class="marker-time">${time}</div>`
+                    ? html`<div class="marker-time time-full">${time}</div>`
+                    : ''}
+                  ${timeCompact
+                    ? html`<div class="marker-time time-compact">${timeCompact}</div>`
                     : ''}
                 </div>
               `
