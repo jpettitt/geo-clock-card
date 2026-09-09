@@ -547,6 +547,12 @@ export class GeoClockCardEditor extends LitElement {
 
       <div class="section">
         <div class="section-title">Display</div>
+        <ha-formfield label="Show clock readout (local time + date)">
+          <ha-switch
+            ?checked=${c.showClock ?? true}
+            @change=${this.toggle('showClock')}
+          ></ha-switch>
+        </ha-formfield>
         <ha-formfield label="Show UTC time">
           <ha-switch
             ?checked=${c.showUTC ?? true}

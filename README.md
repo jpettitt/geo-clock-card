@@ -180,6 +180,8 @@ markerNightColor: "#3da9fc" # every marker into day/night mode (per-marker wins)
 markerShowDay: true         # append weekday after the time (e.g. "12:22 PM Friday")
 
 # Overlays
+showClock: true             # main clock readout + date (off for embedders
+                            # that draw their own live clock, e.g. screensavers)
 showTimezoneBand: true      # hour-of-day numbers across the top
 showTimezoneBoundaries: true # IANA hover/identify popup hit layer
 showTimezoneRegions: true   # 15° offset rectangle bands (defaults to

@@ -110,6 +110,11 @@ export interface GeoClockCardConfig {
   /** Clock-readout cadence in seconds. Default 1. The map repaints
    *  on a separate auto-throttled timer based on subsolar drift. */
   updateInterval?: number;
+  /** Show the main clock readout + date. Default true. Turn off for
+   *  embedders that overlay their own live clock (e.g. the macOS
+   *  screensaver, where a frame rendered minutes ago would otherwise
+   *  show a frozen HH:MM:SS). */
+  showClock?: boolean;
   /** Show UTC time below local time. Default true. */
   showUTC?: boolean;
   /** Show the hour-of-day band across the top. Default true. */
@@ -186,6 +191,7 @@ export interface GeoClockCardConfig {
 export interface ResolvedConfig {
   twilightDegrees: number;
   updateInterval: number;
+  showClock: boolean;
   showUTC: boolean;
   showTimezoneBand: boolean;
   showTimezoneBoundaries: boolean;
