@@ -30,6 +30,24 @@
   }
   </script>
   <style>
+    .site-nav {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 1.25rem 1.25rem 0;
+    }
+    .site-nav a {
+      color: var(--fg);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 1.05rem;
+    }
+    .site-nav a:hover { opacity: 0.85; text-decoration: none; }
+    .site-nav .tld { color: var(--accent); }
+    .site-nav .hint {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-left: 0.6rem;
+    }
     :root {
       --bg: #0c1118;
       --fg: #e6e9ef;
@@ -91,6 +109,10 @@
   </style>
 </head>
 <body>
+  <nav class="site-nav">
+    <a href="/">geoclock<span class="tld">.world</span></a>
+    <span class="hint">&larr; the live map</span>
+  </nav>
   <main>
     <h1>GeoClock Wallpaper for Mac</h1>
 
