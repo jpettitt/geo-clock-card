@@ -439,6 +439,7 @@ export class GeoClockCard extends LitElement {
     this.config = {
       twilightDegrees: clamp(num(config.twilightDegrees, 8), 1, 18),
       updateInterval: clamp(num(config.updateInterval, 1), 1, 600),
+      showClock: config.showClock ?? true,
       showUTC: config.showUTC ?? true,
       showTimezoneBand: config.showTimezoneBand ?? true,
       showTimezoneBoundaries: config.showTimezoneBoundaries ?? true,
@@ -1258,13 +1259,15 @@ export class GeoClockCard extends LitElement {
               sub,
             )
           : ''}
-        <div class="readout">
-          <div class="local-time">${localTime}</div>
-          ${this.config.showUTC
-            ? html`<div class="utc-time">${utcTime}</div>`
-            : ''}
-        </div>
-        <div class="date">${dateStr}</div>
+        ${this.config.showClock
+          ? html`<div class="readout">
+                <div class="local-time">${localTime}</div>
+                ${this.config.showUTC
+                  ? html`<div class="utc-time">${utcTime}</div>`
+                  : ''}
+              </div>
+              <div class="date">${dateStr}</div>`
+          : ''}
         ${this.renderPopup(displayNow)}
       </div>
     `;
