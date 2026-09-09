@@ -617,20 +617,34 @@ export class GeoClockCardEditor extends LitElement {
             <label for="geo-marker-label-mode">Label visibility</label>
             <select
               id="geo-marker-label-mode"
-              .value=${c.markerLabelMode ?? 'always'}
+              .value=${c.markerLabelMode ?? 'auto'}
               @change=${(e: Event) => {
                 const v = (e.target as HTMLSelectElement).value;
                 this.fire(
                   'markerLabelMode',
-                  v === 'hover' ? 'hover' : 'always',
+                  v === 'hover' || v === 'always' || v === 'compact'
+                    ? v
+                    : 'auto',
                 );
               }}
             >
               <option
+                value="auto"
+                ?selected=${(c.markerLabelMode ?? 'auto') === 'auto'}
+              >
+                Auto — full labels, compact when the card is narrow
+              </option>
+              <option
                 value="always"
-                ?selected=${(c.markerLabelMode ?? 'always') === 'always'}
+                ?selected=${c.markerLabelMode === 'always'}
               >
                 Always visible — name + time under each marker
+              </option>
+              <option
+                value="compact"
+                ?selected=${c.markerLabelMode === 'compact'}
+              >
+                Compact — small time only; tap for full info
               </option>
               <option value="hover" ?selected=${c.markerLabelMode === 'hover'}>
                 Hover / tap only — popup like the time-zone overlay

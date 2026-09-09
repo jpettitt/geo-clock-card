@@ -44,9 +44,14 @@ export interface HassLike {
 export type MainTimeSource = 'home' | 'device' | 'entity';
 
 /** Visibility mode for the marker label + time text.
- *  - 'always': render under each marker dot, all the time.
- *  - 'hover': only show in a popup on hover/tap. */
-export type MarkerLabelMode = 'always' | 'hover';
+ *  - 'always': full label + time under each dot, at every size.
+ *  - 'hover': no static text; popup on hover/tap only.
+ *  - 'compact': small time-only text (no name, no day) under each
+ *    dot; full info stays a hover/tap away in the popup.
+ *  - 'auto' (default): 'always', degrading to 'compact' when the
+ *    card's rendered width drops below the crowding threshold —
+ *    phones, and narrow HA dashboard columns. */
+export type MarkerLabelMode = 'always' | 'hover' | 'compact' | 'auto';
 
 /** A single map marker — the time at the entity's location is computed
  *  from its `latitude`/`longitude` attributes. */
@@ -150,7 +155,7 @@ export interface GeoClockCardConfig {
   /** List of additional location markers. Each entity must expose
    *  numeric `latitude` + `longitude` attributes. Default: empty. */
   markers?: MarkerConfig[];
-  /** How marker labels + times are shown. Default 'always'. */
+  /** How marker labels + times are shown. Default 'auto'. */
   markerLabelMode?: MarkerLabelMode;
   /** Default fill color for markers that don't override `color`.
    *  Any CSS color string. Default '#3da9fc'. Used only when

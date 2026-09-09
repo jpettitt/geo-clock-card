@@ -19,7 +19,12 @@
     }
     h1 { font-weight: 400; margin: 0; }
     .stage {
-      width: min(1200px, 100%);
+      /* Viewport-based, NOT 100%: percentages resolve against the
+         flex body, which Chrome inflates to the controls row's
+         natural width when the window is narrower — pinning the
+         card at ~900px and making the auto/compact threshold
+         untestable there. 100vw sidesteps the body entirely. */
+      width: min(1200px, 100vw - 4rem);
       box-shadow: 0 8px 32px rgba(0,0,0,0.6);
       border-radius: 12px;
       overflow: hidden;
@@ -69,7 +74,9 @@
     <label><input id="markers" type="checkbox"> sample markers (London, Tokyo)</label>
     <label>marker labels:
       <select id="markerLabelMode">
-        <option value="always" selected>always</option>
+        <option value="auto" selected>auto (compact when narrow)</option>
+        <option value="always">always</option>
+        <option value="compact">compact</option>
         <option value="hover">hover only</option>
       </select>
     </label>
@@ -228,6 +235,40 @@
         },
       };
       stage.appendChild(card);
+      // Live width readout so "why isn't auto compacting?" is
+      // answerable at a glance: shows the card's rendered width
+      // against the 520px container-query threshold, and whether
+      // the loaded bundle is compact-capable (stale-cache tell).
+      let readout = document.getElementById('width-readout');
+      if (!readout) {
+        readout = document.createElement('p');
+        readout.id = 'width-readout';
+        readout.style.cssText = 'font: 13px monospace; opacity: 0.8;';
+        stage.parentNode.insertBefore(readout, stage.nextSibling);
+      }
+      const updateReadout = () => {
+        const w = Math.round(card.clientWidth);
+        // Inspect the bundle's shadow stylesheet, not the DOM —
+        // .time-compact nodes only exist while markers are shown.
+        const sheets = [
+          ...(card.shadowRoot?.adoptedStyleSheets ?? []),
+          ...[...(card.shadowRoot?.querySelectorAll('style') ?? [])].map(
+            (el) => el.sheet,
+          ),
+        ].filter(Boolean);
+        const capable = sheets.some((ss) => {
+          try {
+            return [...ss.cssRules].some((r) => r.cssText.includes('time-compact'));
+          } catch {
+            return false;
+          }
+        });
+        readout.textContent =
+          `card width: ${w}px — auto compacts below 520px — ` +
+          `bundle compact-capable: ${capable ? 'yes' : 'NO (hard-reload: Cmd+Shift+R)'}`;
+      };
+      new ResizeObserver(updateReadout).observe(card);
+      setTimeout(updateReadout, 800);
       twilightVal.textContent = `${twilight.value}°`;
       tickVal.textContent = `${tick.value}s`;
       brightnessVal.textContent = Number(brightness.value).toFixed(2);
