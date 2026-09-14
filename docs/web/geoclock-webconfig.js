@@ -618,11 +618,21 @@ export function initWebConfig(card, opts = {}) {
     if (opts.bannerEl) opts.bannerEl.style.display = cfg.banner ? '' : 'none';
   };
 
+  // Subscribers (the meeting planner) notified after every config
+  // application — marker edits, geolocation updates, reset — and on
+  // Remember toggles. Callbacks re-read state via the returned API;
+  // no payload.
+  const subs = new Set();
+  const notify = () => {
+    for (const cb of subs) cb();
+  };
+
   // Apply to the card immediately and sync the URL so a reload of a
   // storage-derived config produces a shareable link too.
   const render = () => {
     applyConfig(card, cardConfigFromWeb(cfg));
     applyBanner(); // rides every render so reset/URL loads apply it
+    notify();
   };
   const persist = () => {
     syncUrl();
@@ -914,6 +924,7 @@ export function initWebConfig(card, opts = {}) {
       clearStored();
       clearLastFix(); // opting out clears the cached position too
     }
+    notify(); // planner mirrors the opt-out by clearing its own key
   });
   const resetBtn = el('button', {
     class: 'gcw-btn',
@@ -1162,4 +1173,15 @@ export function initWebConfig(card, opts = {}) {
 
   renderMarkers();
   ensureGeoLoop(); // a loaded/stored auto marker starts resolving now
+
+  // Small read-only API for sibling page modules (the meeting
+  // planner). Markers are copied so callers can't mutate cfg.
+  return {
+    getMarkers: () => cfg.markers.map((m) => ({ ...m })),
+    isRemembered: () => remember,
+    subscribe(cb) {
+      subs.add(cb);
+      return () => subs.delete(cb);
+    },
+  };
 }

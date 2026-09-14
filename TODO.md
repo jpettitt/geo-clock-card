@@ -1,5 +1,25 @@
 # TODO
 
+## v0.3.0
+
+- [x] Meeting planner on geoclock.world: 48 h heat strip under the map
+      (96 half-hour cells; tiers green = everyone in work hours,
+      yellow = everyone awake 7–21, red = someone asleep — worst
+      participant wins), best-window chips, datetime probe, checkbox
+      participants ("You" + markers; a resolved "my location" auto
+      marker replaces "You"). Scrub/probe time-travels the whole card.
+- [x] Card API for the planner: public `previewNow` property (cheap
+      full time-travel — no setConfig, tz caches survive; centerLon
+      pinned in sun mode so scrubbing doesn't slide the map),
+      `resolvedMarkers`/`tzReady` getters, `geoclock-tz-ready` event,
+      and bundle-exported scoring helpers (`src/meeting-plan.ts`:
+      DST-aware `zoneOffsetMinutes`, `scoreInstant/Range`,
+      `bestWindows`) with unit tests.
+- [x] `initWebConfig()` now returns `{ getMarkers, isRemembered,
+      subscribe }` for sibling page modules.
+- [ ] Chrome extension: adopt the planner (build.sh copy + newtab.js
+      wiring) if it earns its keep on the demo.
+
 ## v0.2.10
 
 - [x] Full-project code review (card, web, extension, CI) — fixes below.

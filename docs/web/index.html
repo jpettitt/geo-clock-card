@@ -346,6 +346,12 @@
     </div>
   </div>
 
+  <!-- Meeting planner strip. A sibling of .stage on purpose: native
+       fullscreen only paints descendants of the fullscreen element,
+       so the planner disappears in fullscreen for free (pseudo-fs is
+       handled by a CSS rule in geoclock-planner.js). -->
+  <div id="planner"></div>
+
   <main>
     <section class="copy">
       <p>Hover (or tap on mobile) any region to see the local time there; the map drifts with the sun so the daylit hemisphere stays in the middle. Real day/night terminator from solar geometry, with NASA <a href="https://svs.gsfc.nasa.gov/3523">Blue Marble</a> and <a href="https://earthobservatory.nasa.gov/features/NightLights">Black Marble</a> imagery (public domain), and time-zone polygons from <a href="https://github.com/evansiroky/timezone-boundary-builder">timezone-boundary-builder</a> (ODbL).</p>
@@ -367,6 +373,7 @@
     // own controls.
     import { loadCardBundle } from './geoclock-config.js';
     import { initWebConfig } from './geoclock-webconfig.js';
+    import { initPlanner } from './geoclock-planner.js';
 
     // Asset base — single source of truth. Same-origin: HTML and
     // every dist/ asset are served from geoclock.world via the
@@ -379,12 +386,14 @@
     // same versioned prefix. No manual imageryBase needed.
     // Must match package.json#version — CI enforces this so the
     // site can't silently keep serving an old bundle after a bump.
-    const ASSET_BASE = '/v0.2.11';
+    const ASSET_BASE = '/v0.3.0';
 
     const stage = document.getElementById('stage');
 
     try {
-      await loadCardBundle(ASSET_BASE);
+      // Keep the module namespace: the meeting planner calls the
+      // bundle's exported scoring helpers (scoreRange, bestWindows).
+      const bundle = await loadCardBundle(ASSET_BASE);
       const card = document.createElement('geo-clock-card');
       // The fs-btn + error div are siblings inside .stage; appendChild
       // puts the card after them, which is fine — both are positioned
@@ -397,7 +406,16 @@
       // the visitor's device timezone with no hass — so each visitor
       // still sees their own clock), builds the slide-out panel, and
       // keeps the card + URL in sync as the user edits.
-      initWebConfig(card, { bannerEl: document.querySelector('header') });
+      const webApi = initWebConfig(card, {
+        bannerEl: document.querySelector('header'),
+      });
+      // Meeting planner strip below the map — needs the panel's
+      // marker/remember API and the bundle's scoring exports.
+      initPlanner(card, {
+        webApi,
+        bundle,
+        mount: document.getElementById('planner'),
+      });
     } catch (err) {
       console.error('geoclock.world: failed to load card bundle', err);
       document.getElementById('stage-error').classList.add('is-visible');
