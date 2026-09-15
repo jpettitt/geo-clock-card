@@ -1,4 +1,11 @@
-import { LitElement, html, css, svg, type TemplateResult } from 'lit';
+import {
+  LitElement,
+  html,
+  css,
+  svg,
+  type PropertyValues,
+  type TemplateResult,
+} from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { guard } from 'lit/directives/guard.js';
 import {
@@ -28,7 +35,27 @@ import type {
   HassLike,
   MarkerConfig,
   ResolvedConfig,
+  ResolvedMarker,
 } from './types.js';
+
+// Re-exported so page scripts that import the bundle as an ES module
+// (docs/web/geoclock-planner.js) share one implementation — and one
+// version — of the meeting math.
+export {
+  zoneOffsetMinutes,
+  localMinutesOfDay,
+  scoreInstant,
+  scoreRange,
+  bestWindows,
+} from './meeting-plan.js';
+export type {
+  MeetingTier,
+  TierHours,
+  ParticipantAt,
+  InstantScore,
+  MeetingWindow,
+} from './meeting-plan.js';
+export type { ResolvedMarker } from './types.js';
 
 // Equirectangular working canvas. The SVG scales to fit, so this is
 // just internal coordinate space for the polygon math + image extents.
@@ -88,6 +115,17 @@ export class GeoClockCard extends LitElement {
    *  TZ overlay, hour band). Only advances when the subsolar point
    *  has moved ≥0.5 px at 4K — see MAP_UPDATE_INTERVAL_MS. */
   @state() private mapNow = new Date();
+  /** Public preview override (web meeting planner). While set, both
+   *  clocks collapse to it — the whole card time-travels — and the
+   *  tick timer stops. Set back to null to resume live time. Unlike
+   *  `config.now` this is a cheap property write: no setConfig, so
+   *  the tz caches survive and per-frame scrubbing stays smooth.
+   *  `config.now` (frozenNow) takes precedence when both are set. */
+  @property({ attribute: false }) previewNow: Date | null = null;
+  /** centerLon pinned at preview entry. In 'sun' mode centerLon is a
+   *  function of time, so without the pin a time scrub would slide
+   *  the whole map sideways and force TZ re-projection every frame. */
+  private previewCenterLon: number | null = null;
   /** Projected TZ overlay paths. Deliberately NOT @state: they are
    *  computed inside render() (from tzData/tzIanaData + centerLon)
    *  and read in the same pass. Making them reactive caused Lit to
@@ -550,6 +588,29 @@ export class GeoClockCard extends LitElement {
     this.maybeLoadIanaTimezones();
   }
 
+  protected override willUpdate(changed: PropertyValues<this>): void {
+    if (!changed.has('previewNow')) return;
+    // A frozen config (`now:` in YAML) outranks the preview — the
+    // timer is already stopped and render ignores previewNow.
+    if (this.config?.frozenNow) return;
+    if (this.previewNow) {
+      // Entering preview (a scrub within preview re-enters here with
+      // the pin already set). Pin once so the map frame stays put.
+      if (this.previewCenterLon === null) {
+        this.previewCenterLon = this.resolveCenterLon(this.mapNow);
+        this.stopTimer();
+      }
+    } else if (changed.get('previewNow')) {
+      // Leaving preview: snap to real now — mapNow is stale by the
+      // length of the preview session — and resume ticking.
+      this.previewCenterLon = null;
+      const now = new Date();
+      this.displayNow = now;
+      this.mapNow = now;
+      this.restartTimer();
+    }
+  }
+
   override connectedCallback(): void {
     super.connectedCallback();
     if (!this.config?.frozenNow) {
@@ -625,6 +686,10 @@ export class GeoClockCard extends LitElement {
     this.stopTimer();
     if (!this.config || !this.isConnected) return;
     if (this.config.frozenNow) return; // frozen clock — no timer
+    // Preview pins the clocks too; every restart call site (setConfig,
+    // connectedCallback, recomputeVisibility) routes through here, so
+    // none of them can restart the timer mid-preview.
+    if (this.previewNow) return;
     const intervalMs = this.isCardVisible
       ? this.config.updateInterval * 1000
       : HIDDEN_INTERVAL_MS;
@@ -694,6 +759,14 @@ export class GeoClockCard extends LitElement {
         this.tzIanaData = data;
         this.ianaTzCache.clear();
         this.requestUpdate();
+        // Page scripts (web planner) listen for this to re-read
+        // `resolvedMarkers` once tzids are final.
+        this.dispatchEvent(
+          new CustomEvent('geoclock-tz-ready', {
+            bubbles: true,
+            composed: true,
+          }),
+        );
       })
       .catch((err) => {
         // Same fallback as the offset layer: skip silently if the
@@ -855,6 +928,20 @@ export class GeoClockCard extends LitElement {
    * loaded — in that interim case we still render the dot, just with
    * no time line.
    */
+  /** Public snapshot of the markers resolved to coordinates + IANA
+   *  tzid, for page scripts (the web meeting planner). Recomputed per
+   *  call from live entity state; cheap (tz lookups are cached). */
+  get resolvedMarkers(): ResolvedMarker[] {
+    return this.resolveMarkers();
+  }
+
+  /** True once the IANA timezone dataset has loaded — from then on a
+   *  null marker tzid means "no zone here" (ocean), not "still
+   *  resolving". See the `geoclock-tz-ready` event. */
+  get tzReady(): boolean {
+    return this.tzIanaData !== null;
+  }
+
   private resolveMarkers(): ResolvedMarker[] {
     if (!this.config || this.config.markers.length === 0) return [];
     const out: ResolvedMarker[] = [];
@@ -993,12 +1080,23 @@ export class GeoClockCard extends LitElement {
 
     // Two clocks: mapNow drives anything tied to the planet's
     // orientation (terminator, imagery, hour band, TZ overlay path);
-    // displayNow drives the readout. When `frozenNow` is set both
-    // collapse to the same value.
-    const mapNow = this.config.frozenNow ?? this.mapNow;
-    const displayNow = this.config.frozenNow ?? this.displayNow;
+    // displayNow drives the readout. When `frozenNow` (config) or
+    // `previewNow` (planner scrub) is set both collapse to it.
+    const override = this.config.frozenNow ?? this.previewNow;
+    const mapNow = override ?? this.mapNow;
+    const displayNow = override ?? this.displayNow;
 
-    const centerLon = this.resolveCenterLon(mapNow);
+    // During a preview in 'sun' mode, hold the center where it was at
+    // preview entry: centerLon is time-derived there, and scrubbing
+    // 48 h would otherwise slide the map and re-project the TZ layers
+    // every frame. Other center modes are time-independent.
+    const centerLon =
+      this.previewNow !== null &&
+      this.config.frozenNow === undefined &&
+      this.config.center === 'sun' &&
+      this.previewCenterLon !== null
+        ? this.previewCenterLon
+        : this.resolveCenterLon(mapNow);
     // Subsolar point for this frame — drives day/night marker color
     // selection. Computed from mapNow so a marker flips exactly as
     // the rendered terminator (also mapNow-based) sweeps over it.
@@ -1880,26 +1978,6 @@ function formatDate(d: Date, tz?: string, locale?: string): string {
     year: 'numeric',
     ...(tz ? { timeZone: tz } : {}),
   });
-}
-
-/** A marker after we've resolved its entity to live coordinates +
- *  timezone. `tzid` may be null when the IANA dataset hasn't loaded
- *  yet — the marker still renders, just without a time line. `color`
- *  is undefined when neither the per-marker nor card-level default
- *  is set; the renderer skips the inline `style` so the
- *  `--geo-marker-color` CSS variable wins. */
-interface ResolvedMarker {
-  entity: string;
-  label: string;
-  color: string | undefined;
-  /** Resolved day/night colors (per-marker > card-level, sanitized).
-   *  When either is defined the renderer flips the dot live with the
-   *  terminator; when both are undefined it falls back to `color`. */
-  dayColor: string | undefined;
-  nightColor: string | undefined;
-  lat: number;
-  lon: number;
-  tzid: string | null;
 }
 
 /** Trim and validate the raw marker config. Drops entries with no

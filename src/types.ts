@@ -81,6 +81,27 @@ export interface MarkerConfig {
   nightColor?: string;
 }
 
+/** A marker after we've resolved its entity to live coordinates +
+ *  timezone. `tzid` may be null when the IANA dataset hasn't loaded
+ *  yet — the marker still renders, just without a time line. `color`
+ *  is undefined when neither the per-marker nor card-level default
+ *  is set; the renderer skips the inline `style` so the
+ *  `--geo-marker-color` CSS variable wins. Exposed publicly via the
+ *  card's `resolvedMarkers` getter for page scripts (web planner). */
+export interface ResolvedMarker {
+  entity: string;
+  label: string;
+  color: string | undefined;
+  /** Resolved day/night colors (per-marker > card-level, sanitized).
+   *  When either is defined the renderer flips the dot live with the
+   *  terminator; when both are undefined it falls back to `color`. */
+  dayColor: string | undefined;
+  nightColor: string | undefined;
+  lat: number;
+  lon: number;
+  tzid: string | null;
+}
+
 export interface GeoClockCardConfig {
   type: string;
   /** Where to center the map. Default 'sun'.
