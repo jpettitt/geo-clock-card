@@ -53,6 +53,11 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
+  <!-- PWA: installable + offline (service worker registered by
+       geoclock-pwa.js at the end of <body>). -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0c1118">
+
   <style>
     /* Dark, minimal, map-first. The card is meant to be the hero — the
        chrome around it is intentionally quiet. Layout: vertical stack
@@ -304,7 +309,7 @@
       <a class="cta-btn" id="chrome-cta" style="display:none"
          href="https://chromewebstore.google.com/detail/geoclock-new-tab/nflnpmdpblmhkigchffcfohhjaejhpph"
          rel="noopener">Add to Chrome</a>
-      <a class="cta-btn" href="mac.html">Get the Mac app</a>
+      <a class="cta-btn" href="mac.html">macOS Wallpaper</a>
     </nav>
   </header>
   <script>
@@ -525,5 +530,8 @@
     // (pseudo-fs has no change event; enter/exitPseudoFullscreen
     // call setCardFullBleed directly.)
   </script>
+  <!-- Separate tag so PWA registration/install UI still runs if the
+       card bundle import above fails. -->
+  <script type="module" src="./geoclock-pwa.js"></script>
 </body>
 </html>

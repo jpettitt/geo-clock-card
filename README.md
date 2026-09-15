@@ -69,6 +69,11 @@ card that replaces your new-tab page — see [`chrome-extension/`](chrome-extens
   `mainTimeSource: device` to keep the old behavior.)*
 - **Time scrubbing** — freeze the clock at any UTC moment via `now: …`
   for screenshots or to preview the look at, say, the December solstice.
+- **Installable PWA** (geoclock.world only) — install the demo as an
+  app (header button on Chrome/Edge; Share → Add to Home Screen on
+  iOS). A service worker caches everything — all 24 monthly imagery
+  variants included — so the map, clocks, markers, and planner work
+  fully offline; only place-name search needs a connection.
 - **Meeting planner** (geoclock.world only) — a strip under the live
   demo's map scores the next 48 h across your markers (green: everyone
   in work hours; yellow: everyone awake; red: someone asleep — worst

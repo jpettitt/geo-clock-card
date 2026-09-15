@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Source SVG for the PWA install icons (docs/web/icon-*.png,
+       rendered via scripts/generate-icons.sh). Copied from
+       geoclock-wallpaper-mac's AppIcon.appiconset/icon-source.svg —
+       the same two-tone globe + tilted terminator as
+       docs/web/favicon.svg. Keep all three in sync when the brand
+       mark changes. -->
+
+  <!-- Rounded-square bezel (Big Sur template radius ≈ 17.6%).
+       Kept for the regular PWA icons; the maskable variant
+       (icon-maskable.svg) squares this off because maskable icons
+       must be opaque edge-to-edge. -->
+  <rect x="0" y="0" width="1024" height="1024" rx="180" ry="180"
+        fill="#0c1118"/>
+
+  <!-- Globe — night side -->
+  <circle cx="512" cy="512" r="380" fill="#1a3a5e"/>
+
+  <!-- Day half, tilted ≈Earth's axial tilt for visual interest -->
+  <g transform="rotate(-23 512 512)">
+    <path d="M 512 132 A 380 380 0 0 0 512 892 Z" fill="#ff7a3d"/>
+  </g>
+</svg>

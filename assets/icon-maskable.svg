@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Maskable variant of icon-source.svg: identical globe, but the
+       background is a full opaque square — Android's adaptive-icon
+       mask crops arbitrary shapes, and transparent rounded corners
+       would show as holes. The globe (r=380/1024 ≈ 37% of width)
+       already sits inside the 40%-radius maskable safe zone, so no
+       rescaling is needed. -->
+  <rect x="0" y="0" width="1024" height="1024" fill="#0c1118"/>
+
+  <!-- Globe — night side -->
+  <circle cx="512" cy="512" r="380" fill="#1a3a5e"/>
+
+  <!-- Day half, tilted ≈Earth's axial tilt -->
+  <g transform="rotate(-23 512 512)">
+    <path d="M 512 132 A 380 380 0 0 0 512 892 Z" fill="#ff7a3d"/>
+  </g>
+</svg>
