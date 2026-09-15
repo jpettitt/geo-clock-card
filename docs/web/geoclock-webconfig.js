@@ -819,7 +819,10 @@ export function initWebConfig(card, opts = {}) {
       render();
       persist();
     } catch {
-      geoErr.textContent = 'Geocoding failed — try again.';
+      geoErr.textContent =
+        navigator.onLine === false
+          ? 'Offline — place search needs a connection.'
+          : 'Geocoding failed — try again.';
     } finally {
       addBtn.disabled = false;
       addBtn.textContent = 'Add';

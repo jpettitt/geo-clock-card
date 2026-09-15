@@ -19,6 +19,20 @@
       subscribe }` for sibling page modules.
 - [ ] Chrome extension: adopt the planner (build.sh copy + newtab.js
       wiring) if it earns its keep on the demo.
+- [x] geoclock.world is an installable PWA with full offline support:
+      sw.js (third ASSET_BASE pin, CI-checked in deploy + PR
+      workflows) precaches the ~3 MB core at install and backfills
+      the remaining monthly imagery in the background (resumable);
+      allowlist-only fetch handling keeps wallpaper.html and
+      cross-origin (Nominatim) untouched. manifest.webmanifest +
+      icon PNGs (scripts/generate-icons.sh from assets/icon-*.svg),
+      header "Install app" button, offline badge, offline-aware
+      geocode error. Silent updates via versioned cache swap.
+      Header CTA relabeled "macOS Wallpaper" (was "Get the Mac app").
+- [ ] Post-deploy check: `curl -sI https://geoclock.world/manifest.webmanifest`
+      should show a manifest/JSON content-type; if R2's MIME guess is
+      octet-stream, add a targeted `aws s3 cp --content-type
+      application/manifest+json` step to deploy-site.yml.
 
 ## v0.2.10
 

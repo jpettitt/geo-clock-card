@@ -67,7 +67,9 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           fail=0
-          for f in docs/web/index.html docs/web/wallpaper.html; do
+          # sw.js pins the version too: its precache list and cache
+          # name are keyed on ASSET_BASE.
+          for f in docs/web/index.html docs/web/wallpaper.html docs/web/sw.js; do
             if ! grep -q "'/v$VERSION'" "$f"; then
               echo "::error file=$f::ASSET_BASE does not reference /v$VERSION — bump it in lockstep with package.json"
               fail=1

@@ -45,10 +45,36 @@ Cloudflare R2 bucket bound to the custom domain.
   `newtab.js`). Never load it from `wallpaper.html` or the macOS
   app. Own localStorage key `geoclock.planner.v1`, written only
   while "Remember on this browser" is on.
+- [`geoclock-pwa.js`](geoclock-pwa.js) — PWA plumbing for the demo
+  page: registers `sw.js`, shows the header "Install app" button
+  (beforeinstallprompt), the offline badge, and triggers the imagery
+  backfill. Imported by `index.html` ONLY — never wallpaper.html
+  (macOS screenshot pipeline) and not copied by the extension or
+  mac-app sync scripts.
+- [`sw.js`](sw.js) — the service worker. Carries the **third
+  ASSET_BASE pin** (CI-checked alongside index.html and
+  wallpaper.html). Cache model: core precache at install (~3 MB:
+  shell, bundle, tz JSONs, night layer, ~5 weeks of day imagery),
+  then a resumable sequential backfill of the remaining monthly
+  frames on a message from `geoclock-pwa.js`. Fetch handling is
+  allowlist-only: cache-first for immutable `/v*/` assets,
+  network-first for the shell; cross-origin (Nominatim) and
+  non-shell pages (wallpaper.html, about.html, …) are never
+  intercepted. Updates are silent — new pin ⇒ new cache, old caches
+  purged on activate.
+- [`manifest.webmanifest`](manifest.webmanifest) — install manifest
+  (`.webmanifest`, not `.json`, to avoid confusion with the
+  extension's `manifest.json`).
 - [`preview.png`](preview.png) — screenshot used by the project's
   root README and as the page's OpenGraph image.
 - [`favicon.svg`](favicon.svg) /
   [`apple-touch-icon.png`](apple-touch-icon.png) — site icons.
+- `icon-192.png` / `icon-512.png` / `icon-512-maskable.png` — PWA
+  install icons, rendered from `assets/icon-source.svg` +
+  `assets/icon-maskable.svg` (same globe as favicon.svg and the
+  macOS app icon — keep them in sync) by
+  `scripts/generate-icons.sh`. Committed; regenerate only when the
+  brand mark changes.
 
 No `CNAME` or `.nojekyll` files: those are GitHub Pages conventions.
 Cloudflare uses dashboard-configured custom domains and serves files
@@ -160,6 +186,21 @@ ln -s ../../dist docs/web/v0.2.10
 
 Open <http://localhost:8080> and confirm the card mounts, imagery
 loads, and time-zone hover works.
+
+Two service-worker hygiene rules when testing locally:
+
+- **Use a fresh port after editing served JS.** The browser
+  memory-caches ES modules (python's server sends no cache headers),
+  so a plain reload on a previously-used port can run a stale mix of
+  old and new modules. A new port = a new origin = a cold cache.
+- **Unregister the SW and delete its caches when done** — a leftover
+  `localhost:<port>` service worker will cache-first-hijack `/v*`
+  paths for whatever you serve on that port next. In the console:
+
+  ```js
+  navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister()));
+  caches.keys().then(ks => ks.forEach(k => caches.delete(k)));
+  ```
 
 ## When the logo arrives
 
