@@ -1,0 +1,16 @@
+appId: local.geoclock.offline
+productName: GeoClock Offline
+asar: true
+directories:
+  output: release
+files:
+  - main.cjs
+  - lib/**/*
+  - .generated/**/*
+  - package.json
+win:
+  target:
+    - target: portable
+      arch: [x64]
+  signAndEditExecutable: false
+artifactName: GeoClock-Offline-${version}-win-${arch}.${ext}

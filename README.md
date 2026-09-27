@@ -18,6 +18,9 @@ the planet.
 🧩 **Chrome new-tab extension:** a standalone, fully-offline build of the same
 card that replaces your new-tab page — see [`chrome-extension/`](chrome-extension/).
 
+🖥️ **Windows portable offline app:** an Electron wrapper with bundled maps and
+manual locations — see [`desktop/`](desktop/README.md) for build and run instructions.
+
 ![preview](docs/web/preview.png)
 
 ## What it does

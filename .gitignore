@@ -23,3 +23,8 @@ dist/*.map
 # both directory copies and symlinks — git treats them differently.
 docs/web/v*/
 docs/web/v*
+
+# Portable desktop build output and local verification artifacts.
+desktop/.generated/
+desktop/release/
+desktop/.verification/

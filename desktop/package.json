@@ -1,0 +1,22 @@
+{
+  "name": "geoclock-offline-desktop",
+  "productName": "GeoClock Offline",
+  "version": "0.1.1",
+  "description": "An offline portable Windows world clock",
+  "author": "GeoClock contributors",
+  "license": "MIT",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "prepare-assets": "node scripts/prepare-assets.mjs",
+    "start": "npm run prepare-assets && node scripts/run-electron.cjs .",
+    "test": "node --test test/*.test.cjs",
+    "test:smoke": "npm run prepare-assets && node scripts/run-electron.cjs test/smoke.cjs",
+    "pack": "npm run prepare-assets && electron-builder --dir --win --x64",
+    "dist:win": "npm run prepare-assets && electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "electron": "44.4.5",
+    "electron-builder": "26.15.3"
+  }
+}

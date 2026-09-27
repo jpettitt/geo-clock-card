@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GeoClock Offline</title><link rel="stylesheet" href="app.css"></head>
+<body>
+  <header><div><h1>GeoClock <span>Offline</span></h1><p>A world clock, right here on your computer.</p></div><div class="header-actions"><button id="fs-btn" class="fullscreen-button" type="button" aria-label="Enter fullscreen" title="Fullscreen (F11)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"/></svg></button><a href="credits.html">About</a></div></header>
+  <section class="stage" id="stage" aria-label="World clock">
+    <button id="fs-exit-btn" class="fullscreen-button" type="button" aria-label="Exit fullscreen" title="Exit fullscreen (Esc or F11)" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h5V3m8 0v5h5M8 21v-5H3m18 0h-5v5"/></svg></button>
+    <p id="stage-error" role="alert" hidden>The clock could not load its local files.</p>
+  </section>
+  <section id="planner" aria-label="Meeting planner"></section>
+  <footer>All maps and timezone data are stored locally. Add locations with coordinates in Customize.</footer>
+  <script type="module" src="app.js"></script>
+</body></html>

@@ -1,0 +1,24 @@
+:root { color-scheme: dark; font-family: system-ui, sans-serif; background: #080e1c; color: #e6e9ef; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 18px 26px; border-bottom: 1px solid #273044; }
+h1 { margin: 0; font-size: 23px; letter-spacing: -.6px; } h1 span { color: #d9a53f; }
+header p { margin: 5px 0 0; font-size: 13px; color: #9aa3b0; }
+a { color: #d9a53f; } button { cursor: pointer; }
+.stage { position: relative; max-width: 1600px; margin: 16px auto 0; display: flex; justify-content: center; align-items: center; }
+geo-clock-card { display: block; width: 100%; }
+.header-actions { display: flex; align-items: center; gap: 18px; }
+.fullscreen-button { background: #080e1ca0; color: #e6e9ef; border: 1px solid #ffffff40; border-radius: 6px; height: 36px; width: 36px; padding: 8px; }
+.fullscreen-button svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.fullscreen-button:hover { background: #080e1ce6; border-color: #ffffff80; }
+.fullscreen-button:focus-visible { outline: 2px solid #d9a53f; outline-offset: 3px; }
+#fs-exit-btn { position: absolute; top: 12px; right: 12px; z-index: 20; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .2s ease, visibility 0s linear .2s; }
+#fs-exit-btn.is-visible { opacity: 1; visibility: visible; pointer-events: auto; transition: none; }
+@media (prefers-reduced-motion: reduce) { #fs-exit-btn { transition: none; } }
+.stage:fullscreen { max-width: none; width: 100vw; height: 100vh; margin: 0; background: #000; }
+.stage:fullscreen geo-clock-card { width: auto; }
+footer { padding: 16px 26px; color: #9aa3b0; font-size: 12px; text-align: center; }
+#stage-error { padding: 28px; color: #ffaaa0; }
+.credits { max-width: 760px; margin: 40px auto; padding: 0 24px; line-height: 1.7; }
+.gcw-panel .gcw-row input[type=number], .gcw-panel #gcw-name { width: 170px; }
+@media (max-width: 900px) { header { padding: 12px 18px; } .stage { margin-top: 8px; } }

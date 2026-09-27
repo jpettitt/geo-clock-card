@@ -583,11 +583,22 @@ function el(tag, attrs = {}, ...kids) {
 
 export function initWebConfig(card, opts = {}) {
   injectStyles();
+  const offline = opts.offline === true;
 
   // Initial config precedence: URL > localStorage > defaults.
   let cfg = hasUrlConfig()
     ? configFromUrl()
     : loadStored() || { ...DEFAULTS, markers: [] };
+  const converted = offline && (cfg.center === 'me' || cfg.markers.some((m) => m.auto));
+  if (offline) {
+    if (cfg.center === 'me') {
+      cfg.center = 'lon';
+      cfg.lon = Number.isFinite(cfg.lon) ? clampLon(cfg.lon) : 0;
+    }
+    cfg.markers = cfg.markers.filter((m) => !m.auto &&
+      Number.isFinite(m.lat) && Math.abs(m.lat) <= 90 &&
+      Number.isFinite(m.lon) && Math.abs(m.lon) <= 180);
+  }
 
   // "Remember on this browser" is on by default if a stored blob
   // already exists (the user opted in previously). The Chrome
@@ -654,7 +665,7 @@ export function initWebConfig(card, opts = {}) {
   // browser here on load and every 30 min. A location update
   // changes the card config (new coords) but NOT the config shape,
   // so we re-render without rewriting the URL/storage.
-  const needsGeo = () => cfg.center === 'me' || cfg.markers.some((m) => m.auto);
+  const needsGeo = () => !offline && (cfg.center === 'me' || cfg.markers.some((m) => m.auto));
   let geoTimer = null;
   let geoDenied = false; // remember a hard denial to update the UI hint
   // Backoff for transient failures (see catch below). Reset on
@@ -758,11 +769,11 @@ export function initWebConfig(card, opts = {}) {
     { class: 'gcw-input gcw-grow' },
     el('option', { value: 'sun', text: 'Sun (daylit hemisphere)' }),
     el('option', { value: 'lon', text: 'Fixed longitude' }),
-    el('option', { value: 'me', text: 'My location (live)' }),
+    offline ? null : el('option', { value: 'me', text: 'My location (live)' }),
   );
   centerSel.value = cfg.center;
   const applyCenterMode = (mode) => {
-    cfg.center = mode === 'lon' || mode === 'me' ? mode : 'sun';
+    cfg.center = mode === 'lon' || (!offline && mode === 'me') ? mode : 'sun';
     centerSel.value = cfg.center;
     lonRow.style.display = cfg.center === 'lon' ? '' : 'none';
     render();
@@ -802,6 +813,7 @@ export function initWebConfig(card, opts = {}) {
     text: 'Add',
   });
   const addMarkerFromSearch = async () => {
+    if (offline) return;
     const q = searchInput.value.trim();
     if (!q) return;
     geoErr.textContent = '';
@@ -840,6 +852,7 @@ export function initWebConfig(card, opts = {}) {
     type: 'button',
     text: 'Marker at my location',
     onclick: () => {
+      if (offline) return;
       geoErr.textContent = '';
       // Add a single live auto-marker (no baked coords). It resolves
       // from the browser on load + every 30 min — so the share link
@@ -854,6 +867,30 @@ export function initWebConfig(card, opts = {}) {
       ensureGeoLoop(); // kick off the geolocation fetch + 30-min loop
     },
   });
+
+  const manualName = el('input', { class: 'gcw-input', id: 'gcw-name', type: 'text', maxlength: '120' });
+  const manualLat = el('input', { class: 'gcw-input', id: 'gcw-latitude', type: 'number', min: '-90', max: '90', step: 'any' });
+  const manualLon = el('input', { class: 'gcw-input', id: 'gcw-longitude', type: 'number', min: '-180', max: '180', step: 'any' });
+  const manualAdd = el('button', {
+    class: 'gcw-btn gcw-btn-accent', id: 'gcw-add-location', type: 'button', text: 'Add location',
+    onclick: () => {
+      if (!offline) return;
+      const label = manualName.value.trim();
+      const lat = Number(manualLat.value), lon = Number(manualLon.value);
+      if (!label || !manualLat.value.trim() || !manualLon.value.trim() ||
+          !Number.isFinite(lat) || Math.abs(lat) > 90 ||
+          !Number.isFinite(lon) || Math.abs(lon) > 180) {
+        geoErr.textContent = 'Enter a name, latitude from −90 to 90, and longitude from −180 to 180.';
+        return;
+      }
+      geoErr.textContent = '';
+      cfg.markers.push({ label, lat, lon });
+      manualName.value = manualLat.value = manualLon.value = '';
+      renderMarkers(); render(); persist();
+    },
+  });
+  const manualRow = (text, input) => el('div', { class: 'gcw-row' },
+    el('label', { for: input.id, text, class: 'gcw-grow' }), input);
 
   // Display toggles.
   const mkToggle = (key, labelText) => {
@@ -899,6 +936,7 @@ export function initWebConfig(card, opts = {}) {
     type: 'button',
     text: 'Copy share link',
     onclick: async () => {
+      if (offline) return;
       // Share links must point at the public site even when the panel
       // runs on an origin nobody else can open (chrome-extension://
       // new tab) — opts.shareBase supplies the public URL there.
@@ -1011,12 +1049,17 @@ export function initWebConfig(card, opts = {}) {
       el('div', { class: 'gcw-sect', text: 'Center' }),
       el('div', { class: 'gcw-row' }, centerSel),
       lonRow,
-      el('div', { class: 'gcw-row' }, centerMeBtn),
+      offline ? null : el('div', { class: 'gcw-row' }, centerMeBtn),
 
       el('div', { class: 'gcw-sect', text: 'Markers' }),
       mlist,
-      el('div', { class: 'gcw-row' }, searchInput, addBtn),
-      el('div', { class: 'gcw-row' }, markerMeBtn),
+      ...(offline ? [
+        el('div', { class: 'gcw-attr', text: 'Locations are entered manually; this app works offline.' }),
+        converted ? el('div', { class: 'gcw-attr', text: 'Live location settings were converted to fixed centering; live markers were removed.' }) : null,
+        manualRow('Name', manualName), manualRow('Latitude', manualLat),
+        manualRow('Longitude', manualLon), el('div', { class: 'gcw-row' }, manualAdd),
+      ] : [el('div', { class: 'gcw-row' }, searchInput, addBtn),
+        el('div', { class: 'gcw-row' }, markerMeBtn)]),
       geoErr,
 
       el('div', { class: 'gcw-sect', text: 'Marker colors' }),
@@ -1048,19 +1091,19 @@ export function initWebConfig(card, opts = {}) {
     el(
       'div',
       { class: 'gcw-foot' },
-      el('div', { class: 'gcw-row' }, copyBtn, copiedNote),
+      offline ? null : el('div', { class: 'gcw-row' }, copyBtn, copiedNote),
       el(
         'div',
         { class: 'gcw-row' },
         rememberCb,
         el('label', {
           for: 'gcw-remember',
-          text: 'Remember on this browser',
+          text: offline ? 'Remember settings' : 'Remember on this browser',
         }),
         el('span', { class: 'gcw-grow' }),
         resetBtn,
       ),
-      el(
+      offline ? null : el(
         'div',
         { class: 'gcw-attr' },
         'Geocoding © ',
@@ -1090,7 +1133,7 @@ export function initWebConfig(card, opts = {}) {
       mlist.append(
         el('div', {
           class: 'gcw-attr',
-          text: 'No markers yet — search a place or use your location.',
+          text: offline ? 'No locations yet — enter coordinates below.' : 'No markers yet — search a place or use your location.',
         }),
       );
       return;
