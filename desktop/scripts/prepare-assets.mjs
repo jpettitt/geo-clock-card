@@ -35,7 +35,15 @@ export async function prepareAssets(root = path.dirname(desktop)) {
   for (const [source, target] of copies) {
     const destination = path.join(output, 'renderer', target);
     await mkdir(path.dirname(destination), { recursive: true });
-    await copyFile(path.join(root, source), destination);
+    if (source === 'desktop/renderer/credits.html') {
+      const template = await readFile(path.join(root, source), 'utf8');
+      if (!template.includes('<!-- LICENSE_TEXT -->')) throw new Error('Missing license placeholder');
+      const license = await readFile(path.join(root, 'LICENSE'), 'utf8');
+      const escaped = license.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+      await writeFile(destination, template.replace('<!-- LICENSE_TEXT -->', escaped));
+    } else {
+      await copyFile(path.join(root, source), destination);
+    }
     const bytes = await readFile(destination);
     manifest[`/${target}`] = { file: target, mime: types[path.extname(target)],
       size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };

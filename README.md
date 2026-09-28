@@ -18,8 +18,10 @@ the planet.
 🧩 **Chrome new-tab extension:** a standalone, fully-offline build of the same
 card that replaces your new-tab page — see [`chrome-extension/`](chrome-extension/).
 
-🖥️ **Windows portable offline app:** an Electron wrapper with bundled maps and
-manual locations — see [`desktop/`](desktop/README.md) for build and run instructions.
+🖥️ **Windows portable offline app:** this community-maintained fork includes an
+Electron wrapper with bundled maps and manual locations. See
+[`desktop/`](desktop/README.md) for build and run instructions and the
+[fork's releases](https://github.com/mr0ng/geo-clock-card/releases) for downloads.
 
 ![preview](docs/web/preview.png)
 

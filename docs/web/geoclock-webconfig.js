@@ -1,11 +1,10 @@
 // geoclock-webconfig.js — the configurable-demo CONTROL PANEL.
 //
-// Imported by index.html (the geoclock.world landing page) and by
-// the Chrome new-tab extension (chrome-extension/build.sh copies it
-// next to newtab.js). NOT by wallpaper.html and NOT bundled into the
-// macOS app — those have their own controls, so this UI must never
-// reach them. The only shared dependency is the headless
-// geoclock-config.js.
+// Imported by index.html (the geoclock.world landing page), the
+// Chrome new-tab extension (chrome-extension/build.sh copies it
+// next to newtab.js), and the community Windows fork (desktop/scripts/
+// prepare-assets.mjs copies it for the offline app). NOT by
+// wallpaper.html or the macOS app; those have their own controls.
 //
 // Responsibilities, all self-contained here so index.html stays a
 // thin host:
@@ -67,6 +66,7 @@ const isValidLocale = (s) => {
 };
 
 const STORAGE_KEY = 'geoclock.webconfig.v1';
+const REMEMBER_KEY = 'geoclock.remember.v1';
 // Declared up here, not beside its helpers: `lastFix` is
 // initialized at module scope via the (hoisted) loadLastFix(),
 // which would hit the const's temporal dead zone if this lived
@@ -414,6 +414,25 @@ function hasStored() {
   }
 }
 
+// Store the preference separately: clearing settings on opt-out must not
+// make a remember-by-default host silently opt the user in next launch.
+function loadRememberPreference() {
+  try {
+    const value = localStorage.getItem(REMEMBER_KEY);
+    return value === 'true' ? true : value === 'false' ? false : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveRememberPreference(value) {
+  try {
+    localStorage.setItem(REMEMBER_KEY, String(value));
+  } catch {
+    /* storage disabled / full — non-fatal */
+  }
+}
+
 // ---------------------------------------------------------------
 // Geocoding (Nominatim) + browser geolocation
 //
@@ -600,11 +619,9 @@ export function initWebConfig(card, opts = {}) {
       Number.isFinite(m.lon) && Math.abs(m.lon) <= 180);
   }
 
-  // "Remember on this browser" is on by default if a stored blob
-  // already exists (the user opted in previously). The Chrome
-  // new-tab extension passes rememberByDefault:true — there it IS the
-  // user's own browser and settings should stick without ticking a box.
-  let remember = hasStored() || !!opts.rememberByDefault;
+  // An explicit preference wins over the host default. Older profiles
+  // without this key retain their existing settings-based behavior.
+  let remember = loadRememberPreference() ?? (hasStored() || !!opts.rememberByDefault);
 
   // Update the address bar so a storage-derived config still produces a
   // shareable link. Guarded: a new-tab override page (chrome://newtab)
@@ -958,6 +975,7 @@ export function initWebConfig(card, opts = {}) {
   rememberCb.checked = remember;
   rememberCb.addEventListener('change', () => {
     remember = rememberCb.checked;
+    saveRememberPreference(remember);
     if (remember) {
       saveStored(cfg);
       if (lastFix) saveLastFix(lastFix);

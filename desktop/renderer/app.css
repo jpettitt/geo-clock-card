@@ -20,5 +20,7 @@ geo-clock-card { display: block; width: 100%; }
 footer { padding: 16px 26px; color: #9aa3b0; font-size: 12px; text-align: center; }
 #stage-error { padding: 28px; color: #ffaaa0; }
 .credits { max-width: 760px; margin: 40px auto; padding: 0 24px; line-height: 1.7; }
+.credits summary { color: #d9a53f; cursor: pointer; }
+.credits pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; }
 .gcw-panel .gcw-row input[type=number], .gcw-panel #gcw-name { width: 170px; }
 @media (max-width: 900px) { header { padding: 12px 18px; } .stage { margin-top: 8px; } }

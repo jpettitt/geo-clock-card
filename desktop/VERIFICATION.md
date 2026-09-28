@@ -15,7 +15,8 @@ locally verified Windows build prepared for contribution.
 - Signing: unsigned; default Electron icon. No signing identity or personal
   publisher information was used.
 - Final portable EXE: 112,317,175 bytes (107.1 MiB).
-- SHA-256: `ba85b5f9a29f8cd44c0858fb05d4711e5d9ea8a7e8349785986f71d8acfce1ab`.
+- The release's `SHA256SUMS.txt` records the final EXE checksum. The earlier
+  candidate was rebuilt after the Remember and About fixes.
 
 ## Passing checks
 
@@ -26,7 +27,8 @@ locally verified Windows build prepared for contribution.
 | Electron smoke | Actual sandboxed renderer loaded from `geoclock://app`, with context isolation enabled and Node integration disabled. |
 | Outbound requests | External HTTPS session request rejected; session and renderer requests to a controlled HTTP server rejected, with zero server hits. Location permission denied and new windows blocked. |
 | Offline UI | Manual coordinate inputs available; online search, live location and share controls absent. Invalid latitude rejected; zero coordinates accepted. Add, rename and remove exercised. |
-| Persistence | Locations survived reload and graceful window close/reopen. Planner working hours persisted. Turning Remember off cleared both clock and planner saved settings. |
+| Persistence | Locations survived reload and graceful window close/reopen. Planner working hours persisted. Turning Remember off cleared both clock and planner saved settings, stayed off after reopening, and kept later edits unsaved. Turning it back on resumed persistence across a further reopen. |
+| About and license | The MIT license is shown inside About, with a working link back to the clock. The smoke check reads the assembled license text. |
 | Legacy config | Live centering converted to fixed longitude and automatic markers removed before any location loop. |
 | Web regression | With the offline option omitted, the existing shared panel still presents online location and share controls; no live external service was called. |
 | Fullscreen | Enter/exit exercised; SVG bounds stay inside the viewport. Screenshot visually inspected with the map and fixed marker visible and the aspect ratio preserved. The test uses software rendering for consistent captures. |
@@ -34,7 +36,7 @@ locally verified Windows build prepared for contribution.
 | Portable executable | Copied the actual EXE alone to a temporary directory outside the checkout, with spaces in its name and a fresh profile. It exited successfully after loading every bundled resource and checking renderer isolation/outbound denial. No development server was running. |
 | Package contents | Inspected `app.asar`: only main process helpers, renderer resources, manifest/build info, licenses and stripped package metadata. No developer dependencies, tests, source checkout, personal settings or machine paths included. |
 | Screenshots | Inspected the packaged cold-start map, night shading, clock/date and controls, plus the fullscreen development screenshot. Images/reports are ignored by Git. |
-| Privacy | New source/documents use relative resource paths and generic contributor metadata. Removed machine-specific paths from the handoff plan. Existing upstream public credits retained. |
+| Privacy | New source/documents use relative resource paths and generic contributor metadata. The implementation handoff plan was kept outside the contribution. Existing upstream public credits retained. |
 
 ## Reproduce
 

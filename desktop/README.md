@@ -6,8 +6,12 @@ external sites are blocked. There is no telemetry, update service or startup tas
 
 ## Run
 
-Double-click `GeoClock-Offline-0.1.1-win-x64.exe` from the release directory. No
-installation of Node, Git, Python, WebView2, Home Assistant or a browser is needed.
+Download `GeoClock-Offline-0.1.1-win-x64.exe` from the
+[Windows releases](https://github.com/mr0ng/geo-clock-card/releases) when a
+release is published, or build it locally using the instructions below. A local
+build places the EXE under `desktop/release/`. Double-click the EXE to run it.
+No installation of Node, Git, Python, WebView2, Home Assistant or a browser is needed
+to run the downloaded build.
 The executable extracts its bundled runtime into a temporary directory when it
 starts; allow a few seconds for the first launch. Windows 10/11 x64 is the target.
 
@@ -21,12 +25,13 @@ a publisher warning. Do not disable Windows security settings to run it.
 - Use the fullscreen button or **F11**; press **Escape** to leave fullscreen.
   Moving, clicking or touching the map reveals a small exit icon in the top-right
   corner. It fades after five seconds of inactivity; click it to leave fullscreen.
-- **Remember settings** is on initially. Uncheck it to stop saving clock and planner
-  settings. Reset restores the clock defaults.
+- **Remember settings** is on initially. Uncheck it to clear saved clock and planner
+  settings and keep saving off after reopening. Reset restores the clock defaults.
 
 Settings and Chromium storage live in `%APPDATA%/GeoClockOffline`, not beside the
 executable. Moving the EXE does not move settings. Removing that directory while
 the app is closed clears saved settings. No location data is committed to Git.
+The Remember preference itself is a local true/false value; it contains no locations.
 Time and date follow the computer's clock; offline use does not synchronize it.
 Timezone rule changes require obtaining a newer build.
 
