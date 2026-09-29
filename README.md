@@ -23,6 +23,9 @@ is available from the [Windows release](https://github.com/mr0ng/geo-clock-card/
 It is unsigned; see the [fork](https://github.com/mr0ng/geo-clock-card) for source
 and Windows support.
 
+SHA-256 for `GeoClock-Offline-0.1.1-win-x64.exe` from that release:
+`bd119f53de3f6803e12ae8ae0a80bf00fb79be14f148b35f55ac8b96d941c727`.
+
 ![preview](docs/web/preview.png)
 
 ## What it does
