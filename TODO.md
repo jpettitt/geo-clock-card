@@ -29,10 +29,10 @@
       header "Install app" button, offline badge, offline-aware
       geocode error. Silent updates via versioned cache swap.
       Header CTA relabeled "macOS Wallpaper" (was "Get the Mac app").
-- [ ] Post-deploy check: `curl -sI https://geoclock.world/manifest.webmanifest`
-      should show a manifest/JSON content-type; if R2's MIME guess is
-      octet-stream, add a targeted `aws s3 cp --content-type
-      application/manifest+json` step to deploy-site.yml.
+- [x] Post-deploy check: `curl -sI https://geoclock.world/manifest.webmanifest`
+      serves `application/manifest+json` (and sw.js `text/javascript`)
+      — R2's MIME guessing did the right thing, no workflow change
+      needed. Verified 2026-09-22.
 
 ## v0.2.10
 
