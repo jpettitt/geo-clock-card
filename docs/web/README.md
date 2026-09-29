@@ -24,23 +24,27 @@ Cloudflare R2 bucket bound to the custom domain.
 - [`geoclock-config.js`](geoclock-config.js) — shared HEADLESS
   config plumbing (shortcut expansion, bundle loading, asset
   readiness). Imported by `index.html`, `wallpaper.html`, the Chrome
-  extension, and bundled into the macOS wallpaper app.
+  extension, and bundled into the macOS wallpaper and
+  [community Windows](https://github.com/mr0ng/geo-clock-card) apps.
 - [`geoclock-webconfig.js`](geoclock-webconfig.js) — the slide-out
   Customize panel (URL codec, localStorage, Nominatim geocoding,
-  panel DOM). Imported by `index.html` and the Chrome extension.
+  panel DOM). Imported by `index.html`, the Chrome extension, and the
+  community Windows app, which enables the opt-in `offline` mode for
+  manual coordinates without live location, place search, or share links.
   `initWebConfig()` returns a small read-only API
   (`getMarkers` / `isRemembered` / `subscribe`) consumed by the
   planner module below.
   **Moving or renaming either JS module breaks
-  `chrome-extension/build.sh` and the macOS app's
-  `sync-web-assets.sh` — update those consumers in the same
-  commit.**
+  `chrome-extension/build.sh`, the macOS app's `sync-web-assets.sh`,
+  and external consumers such as the community Windows fork —
+  update the in-repo consumers in the same commit and coordinate
+  with the external ones.**
 - [`geoclock-planner.js`](geoclock-planner.js) — the meeting-planner
   strip below the map (48 h heat strip, best-window chips, datetime
   probe, participant checkboxes). Scoring math comes from the card
   bundle's exports (`src/meeting-plan.ts`); time-travel preview uses
   the card's public `previewNow` property. Imported by `index.html`
-  only — the Chrome extension doesn't ship it yet (adopting it needs
+  and the community Windows app. The Chrome extension doesn't ship it yet (adopting it needs
   a copy line in `chrome-extension/build.sh` plus wiring in
   `newtab.js`). Never load it from `wallpaper.html` or the macOS
   app. Own localStorage key `geoclock.planner.v1`, written only
