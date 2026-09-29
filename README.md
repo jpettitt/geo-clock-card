@@ -18,6 +18,14 @@ the planet.
 🧩 **Chrome new-tab extension:** a standalone, fully-offline build of the same
 card that replaces your new-tab page — see [`chrome-extension/`](chrome-extension/).
 
+🖥️ **Community Windows app:** an independently maintained portable offline build
+is available from the [Windows release](https://github.com/mr0ng/geo-clock-card/releases/tag/windows-v0.1.1).
+It is unsigned; see the [fork](https://github.com/mr0ng/geo-clock-card) for source
+and Windows support.
+
+SHA-256 for `GeoClock-Offline-0.1.1-win-x64.exe` from that release:
+`bd119f53de3f6803e12ae8ae0a80bf00fb79be14f148b35f55ac8b96d941c727`.
+
 ![preview](docs/web/preview.png)
 
 ## What it does
