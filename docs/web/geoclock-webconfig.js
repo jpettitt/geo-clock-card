@@ -2,9 +2,11 @@
 //
 // Imported by index.html (the geoclock.world landing page), the
 // Chrome new-tab extension (chrome-extension/build.sh copies it
-// next to newtab.js), and the community Windows fork (desktop/scripts/
-// prepare-assets.mjs copies it for the offline app). NOT by
-// wallpaper.html or the macOS app; those have their own controls.
+// next to newtab.js), and external consumers such as the community
+// Windows fork's offline app. NOT by wallpaper.html and NOT bundled
+// into the macOS app — those have their own controls, so this UI
+// must never reach them. The only shared dependency is the headless
+// geoclock-config.js.
 //
 // Responsibilities, all self-contained here so index.html stays a
 // thin host:

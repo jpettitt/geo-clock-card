@@ -36,8 +36,9 @@ Cloudflare R2 bucket bound to the custom domain.
   planner module below.
   **Moving or renaming either JS module breaks
   `chrome-extension/build.sh`, the macOS app's `sync-web-assets.sh`,
-  and the Windows fork's `desktop/scripts/prepare-assets.mjs` —
-  coordinate updates to those consumers.**
+  and external consumers such as the community Windows fork —
+  update the in-repo consumers in the same commit and coordinate
+  with the external ones.**
 - [`geoclock-planner.js`](geoclock-planner.js) — the meeting-planner
   strip below the map (48 h heat strip, best-window chips, datetime
   probe, participant checkboxes). Scoring math comes from the card
